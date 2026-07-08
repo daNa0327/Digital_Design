@@ -13,5 +13,6 @@ Fundamentals/
 ├── Subtractor/
 ├── Flip_Flop/
 ├── Register/
+├── Counter/
 └── README.md
 ```

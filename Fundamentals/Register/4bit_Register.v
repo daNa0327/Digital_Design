@@ -6,10 +6,10 @@ module bit4_Register (
 
     always @(posedge CK) begin
         Q <= D;
-        /* Q[3] <= D[3];
-           Q[2] <= D[2];
-           Q[1] <= D[1];
-           Q[0] <= D[0]; */
+        /* Q[3] <= D[3]
+           Q[2] <= D[2]
+           Q[1] <= D[1]
+           Q[0] <= D[0] */
     end
 endmodule
 

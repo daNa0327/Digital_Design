@@ -1,3 +1,4 @@
 # 숨김폴더
 build/
 gitignore/
+*.bat

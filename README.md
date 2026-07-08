@@ -13,3 +13,10 @@ Digital_Design/
 │   └── ...
 └── README.md
 ```
+
+## Simulation
+- Icarus Verilog
+- GTKWave
+
+## Language
+- Verilog HDL
