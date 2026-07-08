@@ -8,5 +8,8 @@ Digital_Design/
 ├── Fundamentals/
 │   ├── README.md
 │   └── ...
+├── Projects/
+│   ├── README.md
+│   └── ...
 └── README.md
 ```
