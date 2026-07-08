@@ -4,14 +4,14 @@ module bit4_ALU ( // Arithmetic Logic Unit
     output reg [3:0] Q,
     output reg Carry
 );
-    parameter ADD = 3'b000;
-    parameter SUB = 3'b001;
-    parameter AND = 3'b010;
-    parameter OR = 3'b011;
-    parameter XOR = 3'b100;
-    parameter NOTA = 3'b101;
-    parameter SHLA = 3'b110;
-    parameter SHRA = 3'b111;
+    parameter ADD = 3'b000;     // Carry, A + B
+    parameter SUB = 3'b001;     // A - B
+    parameter AND = 3'b010;     // A & B
+    parameter OR = 3'b011;      // A | B
+    parameter XOR = 3'b100;     // A ^ B
+    parameter NOTA = 3'b101;    // ~A
+    parameter SHLA = 3'b110;    // Carry, Shift Left A
+    parameter SHRA = 3'b111;    // Carry, Shift Right A
 
     always @(*) begin
         case (Op)
