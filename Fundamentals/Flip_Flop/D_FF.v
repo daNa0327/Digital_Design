@@ -5,15 +5,12 @@ module D_FF (
 );
 
 always @(posedge CK) begin
-    Q <= D; // D의 값을 Q에 저장
-    // = : 순서대로 대입
-    // <= : 동시에 대입
+    Q <= D;     // D = 0: Reset, 1: Set
 end
 
 endmodule
 
 module Top;
-
     reg D, CK;
     wire Q;
 
@@ -25,12 +22,12 @@ module Top;
         CK = 0;
         D = 0;
 
-        $monitor("%0t CK %b D = %b / Q = %b", $time, CK, D, Q);
+        $monitor("CK = %b / D = %b / Q = %b", CK, D, Q);
 
-        #3 D = 1;
-        #3 D = 0;
-        #3 D = 1;
-        #3 D = 0;
+        #3 D = 1;   // Set
+        #3 D = 0;   // Reset
+        #3 D = 1;   // Set
+        #3 D = 0;   // Reset
         
         #1 $finish;
     end

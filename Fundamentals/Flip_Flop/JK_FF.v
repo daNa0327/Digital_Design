@@ -18,7 +18,6 @@ end
 endmodule
 
 module Top;
-
     reg J, K, CK;
     wire Q;
 

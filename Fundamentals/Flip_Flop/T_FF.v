@@ -9,13 +9,12 @@ initial begin // 초기 Q를 0으로 설정
 end
 
 always @(posedge CK) begin
-    Q <= T ? ~Q : Q;
+    Q <= T ? ~Q : Q;    // T = 0: Hold, 1: Toggle 
 end
 
 endmodule
 
 module Top;
-
     reg T, CK;
     wire Q;
 
@@ -29,10 +28,10 @@ module Top;
 
         $monitor("CK = %b / T = %b / Q = %b", CK, T, Q);
 
-        #3 T = 1;
-        #3 T = 0;
-        #3 T = 1;
-        #3 T = 0;
+        #3 T = 1;   // Toggle
+        #3 T = 0;   // Hold
+        #3 T = 1;   // Toggle
+        #3 T = 0;   // Hold
         
         #1 $finish;
     end
