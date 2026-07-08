@@ -35,6 +35,6 @@ module Top;
         #2 SI = 1;
         #2 SI = 0;
 
-        #1 $finish();
+        #1 $finish;
     end
 endmodule
