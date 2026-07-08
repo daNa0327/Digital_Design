@@ -25,7 +25,7 @@ module Top;
         CK = 0;
         D = 0;
 
-        $monitor("t=%0t CK=%b D=%b Q=%b", $time, CK, D, Q);
+        $monitor("%0t CK %b D = %b / Q = %b", $time, CK, D, Q);
 
         #3 D = 1;
         #3 D = 0;
