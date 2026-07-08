@@ -3,7 +3,7 @@
 
 기초 논리회로 구현부터 순차회로 설계, 디지털 시스템 프로젝트까지 학습 과정을 기록합니다.
 
-## Directory Structure
+## 📂 Directory Structure
 ```text
 Digital_Design/
 ├── Fundamentals/
@@ -16,9 +16,9 @@ Digital_Design/
 └── README.md
 ```
 
-## Simulation
+## 💻 Simulation
 - Icarus Verilog
 - GTKWave
 
-## Language
+## 📖 Language
 - Verilog HDL
