@@ -15,7 +15,8 @@ Projects/
     │   └── Circuit.v
     ├── tb/
     │   └── Circuit_tb.v
-    └── sim/
-        ├── sim.out
-        └── wave.vcd
+    ├── sim/
+    │   ├── sim.out
+    │   └── wave.vcd
+    └── Block Diagram.png
 ```
