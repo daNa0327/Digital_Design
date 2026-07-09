@@ -7,6 +7,7 @@ Verilog HDL을 활용하여 설계한 디지털 회로 프로젝트 저장소입
 ```text
 Projects/
 ├── ALU/
+├── Digital_Clock/
 └── README.md
 
 

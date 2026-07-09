@@ -7,7 +7,14 @@ module Digital_Clock (
     output [3:0] m_t,
     output [3:0] m_o,
     output [3:0] s_t,
-    output [3:0] s_o
+    output [3:0] s_o,
+
+    output [6:0] h_t_seg,
+    output [6:0] h_o_seg,
+    output [6:0] m_t_seg,
+    output [6:0] m_o_seg,
+    output [6:0] s_t_seg,
+    output [6:0] s_o_seg
 );
     wire clk_1hz;
     clock_divider c1(
@@ -49,4 +56,34 @@ module Digital_Clock (
     assign m_o = min % 10;
     assign s_t = sec / 10;
     assign s_o = sec % 10;
+
+    Seven_Segment h1_t (
+        .num(h_t),
+        .seg_display(h_t_seg)
+    );
+
+    Seven_Segment h1_o (
+        .num(h_o),
+        .seg_display(h_o_seg)
+    );
+    
+    Seven_Segment m1_t (
+        .num(m_t),
+        .seg_display(m_t_seg)
+    );
+
+    Seven_Segment m1_o (
+        .num(m_o),
+        .seg_display(m_o_seg)
+    );
+    
+    Seven_Segment s1_t (
+        .num(s_t),
+        .seg_display(s_t_seg)
+    );
+
+    Seven_Segment s1_o (
+        .num(s_o),
+        .seg_display(s_o_seg)
+    );
 endmodule

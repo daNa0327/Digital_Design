@@ -1,6 +1,7 @@
 module sec_counter ( // 00 ~ 59 -> 00 + 1 
     input ck,
     input reset,
+
     output reg [5:0] sec,
     output reg carry
 );
@@ -25,6 +26,7 @@ module min_counter ( // 00 ~ 59 -> 00 + 1
     input ck,
     input reset,
     input sec_carry,
+
     output reg [5:0] min,
     output reg carry
 );
@@ -54,6 +56,7 @@ module hour_counter ( // 00 ~ 23 -> 00
     input ck,
     input reset,
     input min_carry,
+    
     output reg [4:0] hour
 );
     always @(posedge ck or posedge reset) begin
