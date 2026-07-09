@@ -4,8 +4,8 @@ module sec_counter ( // 00 ~ 59 -> 00 + 1
     output reg [5:0] sec,
     output reg carry
 );
-    always @(posedge ck) begin
-        if(reset) begin // Reset
+    always @(posedge ck or posedge reset) begin
+        if(reset) begin // Asynchronous Reset
             sec <= 0;
             carry <= 0;
         end
@@ -28,8 +28,8 @@ module min_counter ( // 00 ~ 59 -> 00 + 1
     output reg [5:0] min,
     output reg carry
 );
-    always @(posedge ck) begin
-        if(reset) begin // Reset
+    always @(posedge ck or posedge reset) begin
+        if(reset) begin // Asynchronous Reset
             min <= 0;
             carry <= 0;
         end
@@ -56,8 +56,8 @@ module hour_counter ( // 00 ~ 23 -> 00
     input min_carry,
     output reg [4:0] hour
 );
-    always @(posedge ck) begin
-        if(reset) begin // Reset
+    always @(posedge ck or posedge reset) begin
+        if(reset) begin // Asynchronous Reset
             hour <= 0;
         end
         else if(min_carry) begin // if min_carry == 1: every 60 min
