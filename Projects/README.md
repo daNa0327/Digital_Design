@@ -18,5 +18,6 @@ Projects/
     ├── sim/
     │   ├── sim.out
     │   └── wave.vcd
-    └── Block Diagram.png
+    └── docs/
+        └── ...
 ```
