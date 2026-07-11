@@ -39,11 +39,11 @@ module Traffic_Light_tb;
         $finish();
     end
 
-    always @(dut.state) begin
+    always @(posedge dut.clk_1hz) begin
         $display("State: %b / HTL: %s / TL: %s", 
             dut.state, 
-            HG == 1 ? "Green" : HR == 1 ? "Red" : "Yellow", 
-            VG == 1 ? "Green" : VR == 1 ? "Red" : "Yellow"
+            HG == 1 ? "Green" : HR == 1 ? "Red" : HY == 1 ? "Yellow" : 0, 
+            VG == 1 ? "Green" : VR == 1 ? "Red" : VY == 1 ? "Yellow" : 0
         );
     end
 
