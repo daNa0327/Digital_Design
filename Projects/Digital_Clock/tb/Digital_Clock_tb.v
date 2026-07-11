@@ -56,8 +56,8 @@ module Digital_Clock_tb;
         dut.m1.min = 59;
         dut.s1.sec = 58;
 
-        // Simulation (5초)
-        #5_000_000
+        // Simulation
+        #500_000_000
         $finish();
     end
 
