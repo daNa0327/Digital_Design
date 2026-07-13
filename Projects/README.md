@@ -9,6 +9,7 @@ Projects/
 ├── ALU/
 ├── Digital_Clock/
 ├── Traffic_Light/
+├── UART/
 └── README.md
 
 
@@ -19,7 +20,9 @@ Projects/
     │   └── Circuit_tb.v
     ├── sim/
     │   ├── sim.out
-    │   └── wave.vcd
+    │   ├── sim.png
+    │   ├── wave.vcd
+    │   └── wave.png
     └── docs/
-        └── ...
+        └── Block Diagram, FSM.png
 ```
