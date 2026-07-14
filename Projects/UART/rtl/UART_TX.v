@@ -15,7 +15,7 @@ module UART_TX (
     localparam IDLE  = 2'b00;
     localparam START = 2'b01;
     localparam DATA  = 2'b10;
-    localparam STOP  = 2'd11;
+    localparam STOP  = 2'b11;
 
     always @(posedge ck or posedge reset) begin
         if(reset) begin
@@ -44,7 +44,7 @@ module UART_TX (
                 DATA: begin
                     tx   <= data_tmp[bit_idx];
                     busy <= 1;
-                    if (bit_index == 7) begin
+                    if (bit_idx == 7) begin
                         state <= STOP;
                     end
                     else begin

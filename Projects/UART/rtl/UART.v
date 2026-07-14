@@ -1,15 +1,15 @@
 module UART(
-    input        ck,
-    input        reset,
+    input  ck,
+    input  reset,
 
-    input        tx_start,
+    input  tx_start,
     input  [7:0] tx_data,
-    output       tx,
-    output       tx_busy,
+    output tx,
+    output tx_busy,
 
-    input        rx,
+    input  rx,
     output [7:0] rx_data,
-    output       data_valid
+    output data_valid
 );
     wire baud_tick;
 

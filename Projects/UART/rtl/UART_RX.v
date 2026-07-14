@@ -14,7 +14,7 @@ module UART_RX (
     localparam IDLE  = 2'b00;
     localparam START = 2'b01;
     localparam DATA  = 2'b10;
-    localparam STOP  = 2'd11;
+    localparam STOP  = 2'b11;
 
     always @(posedge ck or posedge reset) begin
         if(reset) begin
@@ -30,13 +30,9 @@ module UART_RX (
                     end
                 end
                 START: begin
-                    if (rx == 0) begin
-                        state   <= DATA;
-                        bit_idx <= 0;
-                    end
-                    else begin
-                        state <= IDLE;
-                    end
+                    bit_idx <= 1;
+                    data_tmp[0] <= rx;
+                    state <= DATA;
                 end
                 DATA: begin
                     data_tmp[bit_idx] <= rx;
