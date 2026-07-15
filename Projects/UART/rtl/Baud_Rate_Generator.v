@@ -7,7 +7,7 @@ module Baud_Rate_Generator (
     parameter CLK_FREQ = 50_000_000; // 50MHz
     parameter BAUD_RATE = 115200; // 115,200 bps
 
-    localparam BAUD_CNT = CLK_FREQ / BAUD_RATE - 1;
+    localparam BAUD_CNT = CLK_FREQ / BAUD_RATE - 1; // 오차 약 0.006%
 
     reg [8:0] count; // 2^9 = 512 > 433
 

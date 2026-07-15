@@ -30,8 +30,8 @@ module UART_RX (
                     end
                 end
                 START: begin
-                    bit_idx <= 1;
-                    data_tmp[0] <= rx;
+                    bit_idx <= 1;       // 비트 밀림 현상 때문에 임의로 index 1부터 시작
+                    data_tmp[0] <= rx;  // 및 index 0 값은 START 상태에서 입력
                     state <= DATA;
                 end
                 DATA: begin
