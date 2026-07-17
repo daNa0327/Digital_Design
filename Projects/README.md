@@ -7,6 +7,7 @@ Verilog HDL을 활용하여 설계한 디지털 회로 프로젝트 저장소입
 ```text
 Projects/
 ├── ALU/
+├── 8-bit_Ripple_Carry_Adder/
 ├── Digital_Clock/
 ├── Traffic_Light/
 ├── UART/
@@ -23,6 +24,7 @@ Projects/
     │   ├── sim.png
     │   ├── wave.vcd
     │   └── wave.png
-    └── docs/
-        └── Block Diagram, FSM.png
+    ├── docs/
+    │   └── Block Diagram, FSM, Schematic.png
+    └── READEME.md
 ```

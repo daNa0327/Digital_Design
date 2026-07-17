@@ -15,16 +15,16 @@ bit8_Adder
 ```
 
 ## 📖 Schematic
-- Half Adder
+### Half Adder
 ![HA Schematic](docs/HA_Schematic.png)
 
-- Full Adder
+### Full Adder
 ![FA Schematic](docs/FA_Schematic.png)
 
-- 4-bit Adder
+### 4-bit Adder
 ![4-bit Adder Schematic](docs/bit4_Adder_Schematic.png)
 
-- 8-bit Adder
+### 8-bit Adder
 ![8-bit Adder Schematic](docs/bit8_Adder_Schematic.png)
 
 ## 📈 Waveform
