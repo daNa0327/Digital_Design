@@ -17,8 +17,9 @@ Digital_Design/
 ```
 
 ## 💻 Simulation
-- Icarus Verilog
-- GTKWave
+- Editor : Antigravity IDE
+- Tool : Icarus Verilog
+- Tool : GTKWave
 
 ## 📖 Language
 - Verilog HDL
