@@ -16,10 +16,8 @@ Digital_Design/
 └── README.md
 ```
 
-## 💻 Simulation
-- Editor : Antigravity IDE
-- Tool : Icarus Verilog
-- Tool : GTKWave
-
-## 📖 Language
-- Verilog HDL
+## 🛠 Development Environment
+- Language : Verilog HDL
+- Editor : Antigravity IDE (VS Code)
+- FPGA Design Tool : Vivado 2023.2
+- RTL Simulation Tool : Icarus Verilog + GTKWave

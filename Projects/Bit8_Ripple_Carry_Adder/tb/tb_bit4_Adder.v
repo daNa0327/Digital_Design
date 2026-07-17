@@ -13,6 +13,7 @@ module tb_bit4_Adder();
     bit4_Adder dut (
         .A(A),
         .B(B),
+        .Ci(0),
 
         .C(C),
         .S(S)
