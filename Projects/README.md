@@ -11,6 +11,7 @@ Projects/
 ├── Digital_Clock/
 ├── Traffic_Light/
 ├── UART/
+├── SPI/
 └── README.md
 
 
