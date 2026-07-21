@@ -14,7 +14,7 @@ SPI
 
 ## 📖 Schematic
 ### SPI Master
-![Master Schematic](sim/SPI_Master_Schematic.png)
+![Master Schematic](docs/SPI_Master_Schematic.png)
 
 ## 📈 Waveform
 ### SPI Master
