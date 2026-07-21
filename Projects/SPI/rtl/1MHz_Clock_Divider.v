@@ -13,16 +13,15 @@ module clock_divider (
 
     always @(posedge ck or posedge reset) begin
         if (reset) begin
-            count    <= 0;
+            count   <= 0;
             spi_clk <= 0;
         end
         else if (count == DIV) begin
-            count    <= 0;
+            count   <= 0;
             spi_clk <= ~spi_clk;
         end
         else begin
             count <= count + 1;
         end
     end
-
 endmodule
