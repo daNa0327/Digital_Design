@@ -9,7 +9,7 @@ module clock_divider (
 
     localparam DIV = CLK_FREQ / (SPI_FREQ * 2) - 1;
 
-    reg [4:0] count;   // 2^5 = 32 > 25
+    reg [4:0] count; // 2^5 = 32 > 25
 
     always @(posedge ck or posedge reset) begin
         if (reset) begin

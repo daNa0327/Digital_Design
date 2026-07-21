@@ -50,7 +50,7 @@ module SPI_Master(
         .spi_clk(spi_clk),
         .reset(reset),
 
-        .shift_en(shift_en),
+        .CS(CS),
         .MISO(MISO),
 
         .rx_data(rx_data)
