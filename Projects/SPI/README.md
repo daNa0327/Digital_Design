@@ -7,18 +7,31 @@ SPI Master와 SPI Slave를 계층적으로 설계하여 MOSI, MISO, SCLK, CS 신
 ```text
 SPI
 ├── SPI_Master
-│   └── ...
+│   ├── clock_divider
+│   ├── FSM
+│   ├── TX
+│   └── RX
 └── SPI_Slave
-    └── ...
+    ├── TX
+    └── RX
 ```
 
 ## 📖 Schematic
-### SPI Master
+### SPI Master moudle
 ![Master Schematic](docs/SPI_Master_Schematic.png)
 
+### SPI Slave moudle
+![Slave Schematic](docs/SPI_Slave_Schematic.png)
+
+### SPI Master ↔ Slave moudle
+![Master_Slave Schematic](docs/SPI_Master_Slave_Schematic.png)
+
 ## 📈 Waveform
-### SPI Master
-![Master Waveform](sim/SPI_Master_wave.png)
+### SPI Master ↔ Slave (Top Level)
+![Master_Slave Schematic](sim/SPI_Top_Level_wave.png)
+
+### SPI Master ↔ Slave (Bit Level)
+![Master_Slave Schematic](sim/SPI_Bit_Level_wave.png)
 
 ## 🛠 Development Environment
 - Language : Verilog HDL
