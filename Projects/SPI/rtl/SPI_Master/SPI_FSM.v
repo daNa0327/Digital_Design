@@ -1,9 +1,9 @@
-module SPI_FSM(
+module Master_FSM(
     input spi_clk,
     input reset,
     input start,
 
-    output reg CS,
+    output CS,
     output reg load,
     output reg shift_en,
     output reg busy,
@@ -16,9 +16,11 @@ module SPI_FSM(
 
     reg [2:0] bit_cnt;
 
+    // CS 신호: IDLE 상태에서 start가 들어오면 즉시 0, DONE 상태에 도달하면 즉시 1
+    assign CS = (state == IDLE && !start) ? 1'b1 : ((state == DONE) ? 1'b1 : 1'b0);
+
     always @(posedge spi_clk or posedge reset) begin
         if (reset) begin
-            CS       <= 1'b1;
             load     <= 1'b0;
             shift_en <= 1'b0;
             busy     <= 1'b0;
@@ -29,7 +31,6 @@ module SPI_FSM(
         else begin
             case(state)
                 IDLE: begin
-                    CS       <= 1'b1;
                     load     <= 1'b0;
                     shift_en <= 1'b0;
                     busy     <= 1'b0;
@@ -37,23 +38,21 @@ module SPI_FSM(
                     bit_cnt  <= 3'b0;
 
                     if (start) begin
-                        CS       <= 1'b0;
-                        load     <= 1'b1;     // TX Data Load
-                        shift_en <= 1'b1;     // 즉시 Shift Enable 활성화
+                        load     <= 1'b1;
+                        shift_en <= 1'b1;
                         busy     <= 1'b1;
                         state    <= TRANSFER;
                     end
                 end
 
                 TRANSFER: begin
-                    CS       <= 1'b0;
-                    load     <= 1'b0;         // load는 1클록만 유지
+                    load     <= 1'b0;
                     shift_en <= 1'b1;
                     busy     <= 1'b1;
                     done     <= 1'b0;
 
-                    if (bit_cnt == 3'd7) begin
-                        CS       <= 1'b1;
+                    // 7번째 클록(bit_cnt==6)을 지나 8번째 클록이 치는 순간 DONE 상태로 전환
+                    if (bit_cnt == 3'd6) begin
                         shift_en <= 1'b0;
                         busy     <= 1'b0;
                         done     <= 1'b1;
@@ -65,7 +64,6 @@ module SPI_FSM(
                 end
 
                 DONE: begin
-                    CS       <= 1'b1;
                     load     <= 1'b0;
                     shift_en <= 1'b0;
                     busy     <= 1'b0;

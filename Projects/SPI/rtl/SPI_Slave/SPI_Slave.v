@@ -1,13 +1,12 @@
-module Master(
-    input ck,
+module SPI_Slave(
     input reset,
     input start,
     output spi_clk,
 
     input  [7:0] tx_data, 
-    output MOSI,
+    output MISO,
 
-    input  MISO,
+    input  MOSI,
     output [7:0] rx_data,
 
     output CS,
@@ -16,13 +15,8 @@ module Master(
     output busy,
     output done
 );
-    clock_divider c1 (
-        .ck(ck),
-        .reset(reset),
-        .spi_clk(spi_clk)
-    );
     
-    Master_FSM f1 (
+    SPI_FSM f1 (
         .spi_clk(spi_clk),
         .reset(reset),
         .start(start),
@@ -34,20 +28,23 @@ module Master(
         .done(done)
     );
 
-    Master_TX t1 (
+    SPI_TX t1 (
         .spi_clk(spi_clk),
         .reset(reset),
-        .CS(CS),             // CS 신호 직접 전달
+
+        .load(load),
+        .shift_en(shift_en),
         .tx_data(tx_data), 
 
-        .MOSI(MOSI)
+        .MISO(MISO)
     );
 
-    Master_RX r1 (
+    SPI_RX r1 (
         .spi_clk(spi_clk),
         .reset(reset),
+
         .CS(CS),
-        .MISO(MISO),
+        .MOSI(MOSI),
 
         .rx_data(rx_data)
     );

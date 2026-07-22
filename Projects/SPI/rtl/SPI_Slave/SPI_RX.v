@@ -1,9 +1,9 @@
-module Master_RX (
+module Slave_RX (
     input spi_clk,
     input reset,
 
     input CS,
-    input MISO,
+    input MOSI,
 
     output reg [7:0] rx_data
 );
@@ -12,7 +12,7 @@ module Master_RX (
             rx_data <= 8'b0;
         end
         else if (!CS) begin
-            rx_data <= {rx_data[6:0], MISO};
+            rx_data <= {rx_data[6:0], MOSI};
         end
     end
 endmodule
