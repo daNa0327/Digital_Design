@@ -21,8 +21,8 @@ module bit4_ALU_tb;
         $dumpfile("sim/wave.vcd");
         $dumpvars(0, bit4_ALU_tb);
         $monitor("Op = %b A = %b B = %b / Carry = %b Q = %b", Op, A, B, Carry, Q);
-
-        #10 A = 4'd3; B = 4'd2; Op = 3'b000; // ADD
+        
+            A = 4'd3; B = 4'd2; Op = 3'b000; // ADD
         #10 A = 4'd15; B = 4'd1; Op = 3'b000; // ADD (Carry)
 
         #10 A = 4'd8; B = 4'd3; Op = 3'b001; // SUB 

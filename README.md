@@ -19,5 +19,5 @@ Digital_Design/
 ## 🛠 Development Environment
 - Language : Verilog HDL
 - Editor : Antigravity IDE (VS Code)
-- FPGA Design Tool : Vivado 2023.2
+- FPGA Design Tool : Vivado 2024.2
 - RTL Simulation Tool : Icarus Verilog + GTKWave

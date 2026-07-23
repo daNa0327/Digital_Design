@@ -33,9 +33,6 @@ module UART_tb;
     always #10 ck = ~ck;
 
     initial begin
-        $dumpfile("sim/wave.vcd");
-        $dumpvars(0, UART_tb);
-
         // Initialization 
         ck = 0;
         tx_start = 0;
