@@ -1,5 +1,6 @@
 module fifo_mem (
     input ck,
+    
     input wr_en,
     input rd_en,
 
