@@ -1,6 +1,9 @@
 # Synchronous First In First Out
 Verilog HDL을 활용하여 Scynchronous FIFO(동기식 FIFO)를 설계한 프로젝트입니다.
 
+FIFO Controller와 Memory Block을 분리하여 설계하였으며,
+Write Pointer와 Read Pointer를 기반으로 데이터 저장 및 출력을 관리합니다.
+
 ## 📝 Module Hierarchy
 ```text
 Synchronous FIFO
