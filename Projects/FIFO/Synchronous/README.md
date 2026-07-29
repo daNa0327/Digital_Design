@@ -1,6 +1,13 @@
 # Synchronous First In First Out
 Verilog HDL을 활용하여 Scynchronous FIFO(동기식 FIFO)를 설계한 프로젝트입니다.
 
+## 📝 Module Hierarchy
+```text
+Synchronous FIFO
+├── Memory
+└── Controller
+```
+
 ## 📖 Schematic
 ![Schematic](docs/Sync_FIFO.png)
 
@@ -32,6 +39,7 @@ Overflow 상황에서 데이터가 정상적으로 무시되는지 검증합니�
 
 ### Expected Result
 FIFO Memory → 01 02 03 04 05 06 07 08
+
 09, 0A → Ignored
 
 ### Verification Point
@@ -39,8 +47,6 @@ FIFO Memory → 01 02 03 04 05 06 07 08
 - Write Pointer 유지 확인
 - 기존 Memory Data 유지 확인
 - Overflow 방지 동작 검증
-
----
 
 ## 3. Read Test
 FIFO에 저장된 데이터를 순차적으로 Read하여  
@@ -59,19 +65,17 @@ FIFO의 First In First Out 동작을 검증합니다.
 FIFO 내부에 데이터가 존재하는 상태에서  
 동시에 Write와 Read 동작을 수행하여 정상적인 Throughput을 검증합니다.
 
-### Operation
-Write:
+### Input Data
 AA → BB
 
-Read:
-Previous Stored Data
+### Output Data
+Previous Data → AA → BB
 
 ### Verification Point
 - Read / Write 동시 동작 확인
 - Read Pointer와 Write Pointer 독립 동작 확인
 - 데이터 충돌 여부 확인
 - FIFO 정상 동작 검증
-
 
 ## 🛠 Development Environment
 - Language : Verilog HDL
