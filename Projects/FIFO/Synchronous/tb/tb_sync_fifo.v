@@ -60,15 +60,11 @@ module sync_fifo_tb;
         #10; data_in = 8'h06;
         #10; data_in = 8'h07;
         #10; data_in = 8'h08;
-        #10; wr_en = 0;
 
         // ======================
         // Overflow Test
         // Full 상태 Write 무시
         // ======================
-        #20;
-        wr_en   = 1;
-
         #10; data_in = 8'h09;
         #10; data_in = 8'h0A;
         #10; wr_en = 0;
@@ -77,7 +73,6 @@ module sync_fifo_tb;
         // Read Test
         // 8개 데이터 출력
         // ======================
-        #20;
         rd_en = 1;
 
         #10;
@@ -93,7 +88,6 @@ module sync_fifo_tb;
         // ======================
         // Write + Read Test
         // ======================
-        #20;
         // Write
         wr_en   = 1;
         rd_en   = 0;
@@ -111,7 +105,6 @@ module sync_fifo_tb;
         rd_en = 1;
 
 
-        #50; $finish;
+        #15; $finish;
     end
-
 endmodule
