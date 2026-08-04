@@ -15,7 +15,7 @@ Synchronous FIFO
 ![Schematic](docs/Sync_FIFO.png)
 
 ## 📈 Waveform
-![Master_Slave Schematic](sim/Sync_FIFO.png)
+![Waveform](sim/Sync_FIFO.png)
 
 ## 📈 Simulation
 Synchronous FIFO의 동작 검증을 위해 다음 4가지 Test Case를 수행하였습니다.
