@@ -2,3 +2,28 @@
 build/
 gitignore/
 *.bat
+
+# --- Vivado / xsim 생성물 ---
+xsim.dir/
+.Xil/
+*.wdb
+*.jou
+*.pb
+xsim_[0-9]*
+webtalk*
+
+# --- 실행 결과 (runs/ 아래만 무시) ---
+**/runs/**/*.log
+**/runs/**/*.vcd
+**/runs/**/*.out
+
+# --- 시크릿 (API 키) ---
+.env
+*.key
+
+# --- Python (Phase 1부터) ---
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
