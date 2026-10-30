@@ -1,0 +1,11 @@
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/Junyoung/Desktop/Verilog/Agent/Manual_test/dut/async_fifo.v" into library work
+INFO: [VRFC 10-311] analyzing module async_fifo
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/Junyoung/Desktop/Verilog/Agent/Manual_test/dut/bin2gray.v" into library work
+INFO: [VRFC 10-311] analyzing module bin2gray
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/Junyoung/Desktop/Verilog/Agent/Manual_test/dut/fifo_ctrl.v" into library work
+INFO: [VRFC 10-311] analyzing module fifo_ctrl
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/Junyoung/Desktop/Verilog/Agent/Manual_test/runs/case_compile_err/src/fifo_mem_err1.v" into library work
+INFO: [VRFC 10-311] analyzing module fifo_mem
+ERROR: [VRFC 10-4982] syntax error near 'end' [C:/Users/Junyoung/Desktop/Verilog/Agent/Manual_test/runs/case_compile_err/src/fifo_mem_err1.v:21]
+ERROR: [VRFC 10-8549] SystemVerilog keyword 'end' used in incorrect context [C:/Users/Junyoung/Desktop/Verilog/Agent/Manual_test/runs/case_compile_err/src/fifo_mem_err1.v:21]
+ERROR: [VRFC 10-8530] module 'fifo_mem' is ignored due to previous errors [C:/Users/Junyoung/Desktop/Verilog/Agent/Manual_test/runs/case_compile_err/src/fifo_mem_err1.v:3]

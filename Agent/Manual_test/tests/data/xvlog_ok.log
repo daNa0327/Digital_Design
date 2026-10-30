@@ -1,0 +1,12 @@
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/Junyoung/Desktop/Verilog/Agent/Manual_test/dut/async_fifo.v" into library work
+INFO: [VRFC 10-311] analyzing module async_fifo
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/Junyoung/Desktop/Verilog/Agent/Manual_test/dut/bin2gray.v" into library work
+INFO: [VRFC 10-311] analyzing module bin2gray
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/Junyoung/Desktop/Verilog/Agent/Manual_test/dut/fifo_ctrl.v" into library work
+INFO: [VRFC 10-311] analyzing module fifo_ctrl
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/Junyoung/Desktop/Verilog/Agent/Manual_test/dut/fifo_mem.v" into library work
+INFO: [VRFC 10-311] analyzing module fifo_mem
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/Junyoung/Desktop/Verilog/Agent/Manual_test/dut/synchronizer.v" into library work
+INFO: [VRFC 10-311] analyzing module synchronizer
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/Users/Junyoung/Desktop/Verilog/Agent/Manual_test/tb/tb_async_fifo.v" into library work
+INFO: [VRFC 10-311] analyzing module async_fifo_tb

@@ -1,0 +1,6 @@
+Vivado Simulator v2024.2.0
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+Running: C:/Xilinx/Vivado/2024.2/bin/unwrapped/win64.o/xelab.exe -debug typical async_fifo_tb -s snap 
+Multi-threading is on. Using 6 slave threads.
+ERROR: [XSIM 43-3225] Cannot find design unit work.async_fifo_tb in library work located at xsim.dir/work.
