@@ -16,6 +16,7 @@ webtalk*
 **/runs/**/*.log
 **/runs/**/*.vcd
 **/runs/**/*.out
+Agent/runs/
 
 # --- 시크릿 (API 키) ---
 .env
