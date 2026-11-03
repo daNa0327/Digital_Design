@@ -1,10 +1,30 @@
+import os
 import shutil
 import subprocess
 import time
 
 from core.models import StepResult
 
-def run_tool(name: str, args: list[str], cwd: str) -> StepResult:
+
+def _kill_tree(proc: subprocess.Popen) -> None:
+    """proc과 그 자식 프로세스 전체를 강제 종료한다."""
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    else:
+        proc.kill()   # 현재는 Windows 기준. 다른 OS는 필요해지면 보강
+
+
+def run_tool(
+    name: str,
+    args: list[str],
+    cwd: str,
+    timeout: float | None = None,
+) -> StepResult:
     exe = shutil.which(name)
     if exe is None:
         raise FileNotFoundError(
@@ -14,21 +34,30 @@ def run_tool(name: str, args: list[str], cwd: str) -> StepResult:
 
     cmd = [exe, *args]
     start = time.perf_counter()
-    proc = subprocess.run(
+    proc = subprocess.Popen(
         cmd,
         cwd=cwd,
-        stdout=subprocess.PIPE,       # 출력을 파이썬이 받는다
-        stderr=subprocess.STDOUT,     # stderr를 stdout에 합친다 (출력 순서 유지)
-        text=True,                    # 바이트가 아닌 문자열로 받는다
-        errors="replace",             # 디코딩 불가 문자가 있어도 죽지 않는다
-        check=False,                  # 종료 코드가 0이 아니어도 예외를 내지 않는다
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        errors="replace",
     )
+
+    timed_out = False
+    try:
+        stdout, _ = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        _kill_tree(proc)
+        stdout, _ = proc.communicate()   # 죽인 뒤 남은 출력을 거둔다
+
     duration = time.perf_counter() - start
 
     return StepResult(
         name=name,
         cmd=cmd,
-        returncode=proc.returncode,
-        stdout=proc.stdout,
+        returncode=None if timed_out else proc.returncode,
+        stdout=stdout or "",
         duration_s=duration,
+        timed_out=timed_out,
     )
