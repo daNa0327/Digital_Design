@@ -1,12 +1,3 @@
-'''
-xvlog, xelab, xsim 각 단계가 남긴 원본 사실을 담는 틀
-
-단계마다 종료 코드가 있음 (정상 0, 에러 1)	returncode
-출력이 콘솔과 로그 파일에서 동일함	        stdout
-에러가 나면 다음 단계를 실행하지 않기로 함	 stopped_at
-VCD는 있을 때만 생김	                 vcd_path (없으면 None)
-'''
-
 from dataclasses import dataclass, field
 
 @dataclass
