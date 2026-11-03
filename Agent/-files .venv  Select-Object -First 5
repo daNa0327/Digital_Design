@@ -1,0 +1,63 @@
+[33mab6257c[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m)[m Move the tests folder
+ Manual_test/NOTES.md                               | 295 [32m+++++++[m
+ Manual_test/dut/async_fifo.v                       |  54 [32m++[m
+ Manual_test/dut/bin2gray.v                         |  14 [32m+[m
+ Manual_test/dut/fifo_ctrl.v                        |  87 [32m++[m
+ Manual_test/dut/fifo_mem.v                         |  29 [32m+[m
+ Manual_test/dut/synchronizer.v                     |  25 [32m+[m
+ Manual_test/runs/case_compile_err/files.f          |   6 [32m+[m
+ Manual_test/runs/case_compile_err/run.tcl          |   5 [32m+[m
+ .../runs/case_compile_err/src/fifo_mem_err1.v      |  29 [32m+[m
+ Manual_test/runs/case_compile_err/xelab.log        |   6 [32m+[m
+ Manual_test/runs/case_compile_err/xelab.pb         | Bin [31m0[m -> [32m648[m bytes
+ Manual_test/runs/case_compile_err/xvlog.log        |  11 [32m+[m
+ Manual_test/runs/case_compile_err/xvlog.pb         | Bin [31m0[m -> [32m1688[m bytes
+ Manual_test/runs/manual/dump.vcd                   | 938 [32m+++++++++++++++++++++[m
+ Manual_test/runs/manual/files.f                    |   6 [32m+[m
+ Manual_test/runs/manual/run.tcl                    |   5 [32m+[m
+ Manual_test/runs/manual/sim.log                    |  30 [32m+[m
+ Manual_test/runs/manual/sim_tcl.log                |  35 [32m+[m
+ Manual_test/runs/manual/snap.wdb                   | Bin [31m0[m -> [32m10627[m bytes
+ Manual_test/runs/manual/xelab.log                  |  18 [32m+[m
+ Manual_test/runs/manual/xelab.pb                   | Bin [31m0[m -> [32m1531[m bytes
+ .../runs/manual/xsim.dir/snap/Compile_Options.txt  |   1 [32m+[m
+ .../manual/xsim.dir/snap/TempBreakPointFile.txt    |   1 [32m+[m
+ Manual_test/runs/manual/xsim.dir/snap/xsim.dbg     | Bin [31m0[m -> [32m9872[m bytes
+ Manual_test/runs/manual/xsim.dir/snap/xsim.mem     | Bin [31m0[m -> [32m3614[m bytes
+ Manual_test/runs/manual/xsim.dir/snap/xsim.reloc   | Bin [31m0[m -> [32m1667[m bytes
+ Manual_test/runs/manual/xsim.dir/snap/xsim.rtti    | Bin [31m0[m -> [32m259[m bytes
+ Manual_test/runs/manual/xsim.dir/snap/xsim.svtype  | Bin [31m0[m -> [32m66[m bytes
+ Manual_test/runs/manual/xsim.dir/snap/xsim.type    | Bin [31m0[m -> [32m24[m bytes
+ Manual_test/runs/manual/xsim.dir/snap/xsim.xdbg    | Bin [31m0[m -> [32m2656[m bytes
+ .../runs/manual/xsim.dir/snap/xsimSettings.ini     |  50 [32m++[m
+ .../runs/manual/xsim.dir/snap/xsim_script.tcl      |   1 [32m+[m
+ .../runs/manual/xsim.dir/snap/xsimcrash.log        |   0
+ Manual_test/runs/manual/xsim.dir/snap/xsimk.exe    | Bin [31m0[m -> [32m76259[m bytes
+ .../runs/manual/xsim.dir/snap/xsimkernel.log       |   7 [32m+[m
+ .../runs/manual/xsim.dir/work/async_fifo.sdb       | Bin [31m0[m -> [32m2088[m bytes
+ .../runs/manual/xsim.dir/work/async_fifo_tb.sdb    | Bin [31m0[m -> [32m4144[m bytes
+ Manual_test/runs/manual/xsim.dir/work/bin2gray.sdb | Bin [31m0[m -> [32m647[m bytes
+ .../runs/manual/xsim.dir/work/fifo_ctrl.sdb        | Bin [31m0[m -> [32m3668[m bytes
+ Manual_test/runs/manual/xsim.dir/work/fifo_mem.sdb | Bin [31m0[m -> [32m1561[m bytes
+ .../runs/manual/xsim.dir/work/synchronizer.sdb     | Bin [31m0[m -> [32m1329[m bytes
+ Manual_test/runs/manual/xsim.dir/work/work.rlx     |  10 [32m+[m
+ Manual_test/runs/manual/xsim.jou                   |  25 [32m+[m
+ Manual_test/runs/manual/xsim_71592.backup.jou      |  25 [32m+[m
+ Manual_test/runs/manual/xvlog.log                  |  12 [32m+[m
+ Manual_test/runs/manual/xvlog.pb                   | Bin [31m0[m -> [32m1557[m bytes
+ Manual_test/tb/tb_async_fifo.v                     | 134 [32m+++[m
+ README.md                                          |  31 [32m+[m
+ core/__init__.py                                   |   0
+ core/__pycache__/__init__.cpython-315.pyc          | Bin [31m0[m -> [32m157[m bytes
+ pytest.ini                                         |   3 [32m+[m
+ requirements.txt                                   | Bin [31m0[m -> [32m202[m bytes
+ sim/__init__.py                                    |   0
+ sim/__pycache__/__init__.cpython-315.pyc           | Bin [31m0[m -> [32m156[m bytes
+ tests/data/README.md                               |   4 [32m+[m
+ tests/data/ok_async_fifo.vcd                       | 938 [32m+++++++++++++++++++++[m
+ tests/data/sim_tcl_ok.log                          |  35 [32m+[m
+ tests/data/xelab_ok.log                            |  18 [32m+[m
+ tests/data/xelab_syntax_error.log                  |   6 [32m+[m
+ tests/data/xvlog_ok.log                            |  12 [32m+[m
+ tests/data/xvlog_syntax_error.log                  |  11 [32m+[m
+ 61 files changed, 2917 insertions(+)
