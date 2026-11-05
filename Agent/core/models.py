@@ -35,21 +35,22 @@ Status = Literal[
 @dataclass
 class ErrorItem:
     # 로그에서 뽑은 에러 한 건.
-    stage: str                  # "xvlog" | "xelab" | "xsim"
+    stage: str                  # "xvlog" | "xelab" | "xsim" 어느 도구가 낸 에러인지
     code: str | None            # 예: "VRFC 10-4982"
     message: str
-    file: str | None = None
-    line: int | None = None
+    file: str | None = None     # 에러 위치
+    line: int | None = None     # 에러 위치
     is_primary: bool = False    # 같은 단계의 첫 에러만 True
 
 @dataclass
 class SimResult:
     # RunResult를 해석한 최종 결과.
-    status: Status
-    errors: list[ErrorItem] = field(default_factory=list)
-    unanalyzed_files: list[str] = field(default_factory=list)
-    finish_time_ps: int | None = None
-    tb_verdict: Literal["PASS", "FAIL"] | None = None
-    workdir: str | None = None
-    vcd_path: str | None = None
+    status: Status      # 최종 판정
+    errors: list[ErrorItem] = field(default_factory=list)       # 에러 목록
+    unanalyzed_files: list[str] = field(default_factory=list)   # 분석하지 못한 파일
+    finish_time_ps: int | None = None   # 로그의 $finish 시각
+    tb_verdict: Literal["PASS", "FAIL"] | None = None           # TB가 출력한 PASS/FAIL 원본 마커
+    workdir: str | None = None          # 파일 경로
+    vcd_path: str | None = None         # 파일 경로
+    # TB가 PASS를 출력했어도 시뮬레이터가 ERROR를 냈다면 status는 FAIL
 #---------------------------------------#
