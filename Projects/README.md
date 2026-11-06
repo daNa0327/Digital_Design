@@ -12,6 +12,8 @@ Projects/
 ├── Traffic_Light/
 ├── UART/
 ├── SPI/
+├── FIFO/
+├── I2C/
 └── README.md
 
 

@@ -6,6 +6,9 @@
 ## 📂 Directory Structure
 ```text
 Digital_Design/
+├── Agent/
+│   ├── ...
+│   └── README.md
 ├── Fundamentals/
 │   ├── ...
 │   └── README.md
@@ -20,4 +23,3 @@ Digital_Design/
 - Language : Verilog HDL
 - Editor : Antigravity IDE (VS Code)
 - FPGA Design Tool : Vivado 2024.2
-- RTL Simulation Tool : Icarus Verilog + GTKWave
