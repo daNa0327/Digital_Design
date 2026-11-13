@@ -51,7 +51,6 @@ Decoder는 n-bit 입력을 2ⁿ개의 출력 중 하나로 변환하고, Encoder
 - n-bit ↔ 2ⁿ 변환 관계와 Decoder/Encoder의 역함수 관계
 - Decoder의 각 출력이 최소항(minterm)이라는 점
 - Encoder가 OR 게이트만으로 구현됨.
-- Priority Encoder의 필요성 이해
 
 ## 🛠 Development Environment
 - Verilog HDL / Antigravity IDE (VS Code)
