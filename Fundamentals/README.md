@@ -20,5 +20,7 @@ Fundamentals/
 
 └──Logic Circuit/
     ├── Logic Circuit.v
-    └── Truth Table, Circuit Diagram, Logic Equation.png
+    ├── docs/
+    │   └── Truth Table, Circuit Diagram, Logic Equation.png
+    └── README.md
 ```
