@@ -59,7 +59,8 @@ def test_generated_files(tmp_path, src, monkeypatch):
     fake, _ = _fake_run_tool({})
     monkeypatch.setattr("sim.xsim.run_tool", fake)
     wd = tmp_path / "w1"
-    XsimSim().run([str(src)], "a", str(wd))
+    res = XsimSim().run([str(src)], "a", str(wd))
+    assert [Path(s).name for s in res.sources] == ["a.v"]
     listed = (wd / "files.f").read_text(encoding="utf-8").split()
     assert len(listed) == 1 and Path(listed[0]).samefile(src)
     tcl = (wd / "run.tcl").read_text(encoding="utf-8")

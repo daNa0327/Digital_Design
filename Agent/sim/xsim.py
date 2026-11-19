@@ -53,7 +53,7 @@ class XsimSim(Simulator):
             ("xsim", [self.snapshot, "-tclbatch", "run.tcl", "-log", "sim.log"], self.sim_timeout),
         ]
 
-        result = RunResult(workdir=str(wd))
+        result = RunResult(workdir=str(wd), sources=[p.as_posix() for p in sources])
         t0 = time.perf_counter()
         for name, args, tmo in steps:
             r = run_tool(name, args, cwd=str(wd), timeout=tmo)

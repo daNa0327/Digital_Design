@@ -31,3 +31,6 @@ def test_error_item_optional_fields():
 def test_error_item_runtime_defaults():
     e = ErrorItem(stage="xsim", code=None, message="m")
     assert e.severity == "ERROR" and e.time_ps is None
+
+def test_sim_result_failed_stage_default():
+    assert SimResult(status="PASS").failed_stage is None

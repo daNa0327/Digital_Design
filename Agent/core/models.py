@@ -25,6 +25,7 @@ class RunResult:
     stopped_at: str | None = None   # 중단 정책으로 멈춘 단계 이름
     vcd_path: str | None = None
     total_duration_s: float = 0.0
+    sources: list[str] = field(default_factory=list)   # 실행에 사용한 소스 (절대경로, POSIX 형식)
 #---------------------------------------#
 
 #---------- Phase 2: 해석 결과 ----------#
@@ -54,5 +55,6 @@ class SimResult:
     tb_verdict: Literal["PASS", "FAIL"] | None = None           # TB가 출력한 PASS/FAIL 원본 마커
     workdir: str | None = None          # 파일 경로
     vcd_path: str | None = None         # 파일 경로
+    failed_stage: str | None = None     # 판정을 결정한 단계 ("xvlog" | "xelab" | "xsim")
     # TB가 PASS를 출력했어도 시뮬레이터가 ERROR를 냈다면 status는 FAIL
 #---------------------------------------#
