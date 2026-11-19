@@ -1,0 +1,23 @@
+
+****** xsim v2024.2 (64-bit)
+  **** SW Build 5239630 on Fri Nov 08 22:35:27 MST 2024
+  **** IP Build 5239520 on Sun Nov 10 16:12:51 MST 2024
+  **** SharedData Build 5239561 on Fri Nov 08 14:39:27 MST 2024
+  **** Start of session at: Wed Nov 18 21:13:31 2026
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+
+source xsim.dir/snap/xsim_script.tcl
+# xsim {snap} -autoloadwcfg -tclbatch {run.tcl}
+Time resolution is 1 ps
+source run.tcl
+## open_vcd dump.vcd
+## log_vcd [get_objects -r /*]
+INFO: HDL object /async_fifo_tb/dut/m1/mem is an unpacked array. VCD does not support unpacked array type according to IEEE LRM 1800-2009, section21.7.5.
+## run all
+Fatal: dummy fatal
+Time: 402 ns  Iteration: 0  Process: /async_fifo_tb/Initial42_8  Scope: async_fifo_tb  File: C:/Users/Junyoung/Desktop/Verilog/Agent/runs/_variants/tb_fatal.v Line: 131
+$finish called at time : 402 ns
+## close_vcd
+## quit
+INFO: [Common 17-206] Exiting xsim at Wed Nov 18 21:13:35 2026...

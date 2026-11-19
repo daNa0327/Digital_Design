@@ -140,7 +140,7 @@ VCD는 **값이 바뀔 때만** 타임스탬프가 기록되므로, 마지막 �
 
 | 파일 | 의미 | Agent에서의 처리 |
 |---|---|---|
-| `xvlog.log`, `xelab.log` | 각 도구가 cwd에 자동 생성 (콘솔 출력과 동일) | 파싱 대상 |
+| `xvlog.log`, `xelab.log` | 각 도구가 cwd에 자동 생성 (콘솔 출력과 동일, xsim 로그에는 해당하지 않는다) | 파싱 대상 |
 | `sim.log`, `sim_tcl.log` | `-log`로 지정한 xsim 로그 | 파싱 대상 |
 | `dump.vcd` | Tcl로 생성한 파형 | VcdReader 입력 |
 | `snap.wdb` | Tcl 실행 시 자동 생성되는 xsim 파형 DB | 무시 |

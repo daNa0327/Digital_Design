@@ -35,12 +35,14 @@ Status = Literal[
 @dataclass
 class ErrorItem:
     # 로그에서 뽑은 에러 한 건.
-    stage: str                  # "xvlog" | "xelab" | "xsim" 어느 도구가 낸 에러인지
-    code: str | None            # 예: "VRFC 10-4982"
+    stage: str                  # "xvlog" | "xelab" | "xsim"
+    code: str | None            # 예: "VRFC 10-4982" (시뮬레이터 런타임 에러는 None)
     message: str
-    file: str | None = None     # 에러 위치
-    line: int | None = None     # 에러 위치
+    file: str | None = None
+    line: int | None = None
     is_primary: bool = False    # 같은 단계의 첫 에러만 True
+    severity: str = "ERROR"     # "ERROR" | "FATAL"
+    time_ps: int | None = None  # 시뮬레이션 중 발생 시각 (xsim 런타임 에러만)
 
 @dataclass
 class SimResult:

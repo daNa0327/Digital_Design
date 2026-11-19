@@ -68,7 +68,7 @@ Agent/
 |---|---|---|
 | 구조 | `Simulator` 추상 클래스 + `XsimSim` 구현 | xsim에 대한 지식(3단계, 명령, Tcl, 로그 위치)을 한 곳에 가둠. 이후 iverilog 등 추가 시 Agent 코드는 불변 |
 | 책임 범위 | Phase 1은 **사실만 수집**, 판정은 Phase 2 | 파서를 고쳐도 실행부가 영향받지 않게 분리 |
-| 출력 수집 | stdout + stderr를 하나로 합침 | 터미널에서 본 순서 그대로 보존. 콘솔 출력과 로그 파일 내용이 같음을 Phase 0에서 확인 |
+| 출력 수집 | stdout + stderr를 하나로 합침 | 터미널에서 본 순서 그대로 보존. xsim 로그 파일(sim.log)은 시스템 정보 헤더가 추가되어 콘솔과 다름 (본문은 동일) |
 | 종료 코드 | 0이 아니어도 예외를 내지 않고 **값으로 기록** (`check=False`) | 이 프로젝트에서 종료 코드 1은 수집 대상 데이터 |
 | 도구 없음 | `FileNotFoundError` | DUT의 결과가 아니라 **환경 문제** |
 | 소스 파일 없음 | `FileNotFoundError` | 호출 측 실수. `StepResult`에는 DUT 결과만 담음 |
@@ -263,8 +263,8 @@ vcd_path  : None
 
 | 항목 | 상태 | 비고 |
 |---|---|---|
-| `xsim`의 종료 코드 (`$error`, `$fatal`) | ❓ | 확인한 적 없음. 지금은 0이 아니면 `stopped_at="xsim"`으로만 기록하고 의미 해석은 Phase 2 |
-| `$error`/`$fatal`/`[TB] PASS|FAIL`의 xsim 로그 형식 | ❓ | 샘플 수집 필요 (TB 복사본에 삽입 후 `run_once`) |
+| `xsim`의 종료 코드 (`$error`, `$fatal`) | ✅ | 측정 결과: 정상, $error, $fatal 모두 0. 타임아웃만 None. 시뮬레이션 FAIL은 로그로만 판정 |
+| `$error`/`$fatal`/`[TB] PASS|FAIL`의 xsim 로그 형식 | ✅ | Error:/Fatal: 줄 다음에 Time: ... File: ... Line: 줄이 따라옴, [TB] ...는 줄 맨 앞에 그대로 출력 |
 | 타임아웃으로 죽인 `xsim`의 VCD | ❓ | `close_vcd`가 실행되지 않아 비었거나 잘렸을 수 있음. `vcd_path`는 파일이 있으면 기록하지만 **완전하다는 보장은 없음**. Phase 3에서 고려 |
 | 타임아웃의 비Windows 지원 | ⏸ | `_kill_tree`는 Windows 기준. 다른 OS는 `proc.kill()`만 호출 |
 | 경로에 공백이 있는 경우 | ⏸ | `files.f`에 따옴표가 필요할 수 있음. 현재 경로에는 공백 없음 |

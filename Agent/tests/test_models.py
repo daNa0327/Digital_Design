@@ -23,8 +23,11 @@ def test_sim_result_defaults():
     assert r.errors == [] and r.unanalyzed_files == []
     assert r.finish_time_ps is None and r.tb_verdict is None
 
-
 def test_error_item_optional_fields():
     e = ErrorItem(stage="xelab", code=None, message="no location")
     assert e.file is None and e.line is None
     assert e.is_primary is False
+
+def test_error_item_runtime_defaults():
+    e = ErrorItem(stage="xsim", code=None, message="m")
+    assert e.severity == "ERROR" and e.time_ps is None
