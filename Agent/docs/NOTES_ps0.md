@@ -140,8 +140,8 @@ VCD는 **값이 바뀔 때만** 타임스탬프가 기록되므로, 마지막 �
 
 | 파일 | 의미 | Agent에서의 처리 |
 |---|---|---|
-| `xvlog.log`, `xelab.log` | 각 도구가 cwd에 자동 생성 (콘솔 출력과 동일, xsim 로그에는 해당하지 않는다) | 파싱 대상 |
-| `sim.log`, `sim_tcl.log` | `-log`로 지정한 xsim 로그 | 파싱 대상 |
+| `xvlog.log`, `xelab.log` | 각 도구가 cwd에 자동 생성 (콘솔 출력과 동일) | 콘솔(`StepResult.stdout`) 기준으로 파싱 |
+| `sim.log`, `sim_tcl.log` | `-log`로 지정한 xsim 로그. **콘솔 출력과 다름**: 파일에만 시스템 정보 헤더(프로세스 ID, 호스트 이름, OS, CPU, 메모리)가 붙음 (Phase 2 실측) | 파싱하지 않음. 콘솔 출력 기준으로 파싱 |
 | `dump.vcd` | Tcl로 생성한 파형 | VcdReader 입력 |
 | `snap.wdb` | Tcl 실행 시 자동 생성되는 xsim 파형 DB | 무시 |
 | `xsim.dir/` | 컴파일 결과, 스냅샷 | 실행마다 새 workdir로 격리 |
@@ -237,7 +237,7 @@ empty <= (wr_gray_sync == rd_gray);
 |---|---|
 | 시뮬레이터 | xsim 주 백엔드, `Simulator` 추상 클래스 + `XsimSim` 어댑터 |
 | 로그 | xvlog / xelab / xsim **로그가 3개로 나뉨** → 단계 이름과 함께 합쳐 판정 |
-| 정상 종료 마커 | `$finish called at time : <t> <unit> : File "<path>" Line <n>` |
+| 종료 마커 | `$finish called at time : <t> <unit> : File "<path>" Line <n>`. 단 `$fatal`의 `$finish` 줄에는 File/Line이 없고, `$finish` 줄이 있다고 정상 종료는 아님 (Phase 2 실측) |
 | PASS 판정 | 명시적 PASS 마커가 있을 때만 PASS. 마커가 없으면 PASS로 처리하지 않음 |
 | 종료 시각 | VCD 마지막 타임스탬프가 아니라 **로그의 `$finish` 줄**에서 가져옴 |
 | 신호 조회 | VcdReader는 **ID 기준으로 이력을 저장**하고 이름→ID를 별도 매핑 (같은 ID를 여러 이름이 공유) |
@@ -257,7 +257,7 @@ self.changes  = defaultdict(list)   # ID -> [(t, val)]
 
 | 항목 | 상태 | 비고 |
 |---|---|---|
-| 로그 5종 수집 (컴파일 에러, 엘라보레이션 에러, `$error` FAIL, 타임아웃) | ⏸ | Phase 2에서 해당 판정 규칙을 만들 때 하나씩 생성 |
+| 로그 5종 수집 (컴파일 에러, 엘라보레이션 에러, `$error` FAIL, 타임아웃) | ✅ | Phase 2에서 수집 완료 (`tests/data/`, `docs/NOTES_ps2.md` 참고) |
 | `empty` 버그 확장 실험 (`#100; $finish;`) | ⏸ | 수정은 Agent 완성 후 |
 | GTKWave로 alias/X 표시 재확인 | 미수행 | 6.2 참고 |
 | 파형 #4 (읽기 값 순서 01→08) 확대 확인 | 미수행 | 235~260ns 등 읽기 구간 |

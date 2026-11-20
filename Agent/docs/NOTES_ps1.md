@@ -68,7 +68,7 @@ Agent/
 |---|---|---|
 | 구조 | `Simulator` 추상 클래스 + `XsimSim` 구현 | xsim에 대한 지식(3단계, 명령, Tcl, 로그 위치)을 한 곳에 가둠. 이후 iverilog 등 추가 시 Agent 코드는 불변 |
 | 책임 범위 | Phase 1은 **사실만 수집**, 판정은 Phase 2 | 파서를 고쳐도 실행부가 영향받지 않게 분리 |
-| 출력 수집 | stdout + stderr를 하나로 합침 | 터미널에서 본 순서 그대로 보존. xsim 로그 파일(sim.log)은 시스템 정보 헤더가 추가되어 콘솔과 다름 (본문은 동일) |
+| 출력 수집 | stdout + stderr를 하나로 합침 | 터미널에서 본 순서 그대로 보존. `xvlog`/`xelab` 로그 파일은 콘솔과 같지만, **`xsim`의 `sim.log`는 시스템 정보 헤더가 붙어 콘솔과 다름** (Phase 2 실측). 파서는 `StepResult.stdout` 기준 |
 | 종료 코드 | 0이 아니어도 예외를 내지 않고 **값으로 기록** (`check=False`) | 이 프로젝트에서 종료 코드 1은 수집 대상 데이터 |
 | 도구 없음 | `FileNotFoundError` | DUT의 결과가 아니라 **환경 문제** |
 | 소스 파일 없음 | `FileNotFoundError` | 호출 측 실수. `StepResult`에는 DUT 결과만 담음 |
@@ -140,6 +140,7 @@ class RunResult:
     stopped_at: str | None = None   # 중단 정책으로 멈춘 단계 이름
     vcd_path: str | None = None
     total_duration_s: float = 0.0
+    # Phase 2에서 추가: sources: list[str]  (실행에 요청한 소스 파일, 미분석 파일 계산용)
 ```
 
 - `field(default_factory=list)`: 가변 기본값을 객체마다 새로 만들기 위함 (`= []`로 쓰면 dataclass가 `ValueError`로 막음)
@@ -211,7 +212,7 @@ Python ──▶ xsim.BAT (cmd.exe 래퍼) ──▶ xsim.exe (실제 시뮬레�
 
 `$finish`가 없는 TB는 시뮬이 끝나지 않는다. 타임아웃이 없으면 Agent 전체가 멈춘다.
 
-- ❓ **`subprocess.run(timeout=)`이 이 환경에서 실제로 멈추는지는 실험하지 않았다.** Windows에서 자식이 파이프를 쥐고 있으면 kill 뒤의 출력 수집에서 대기할 수 있다는 알려진 문제를 근거로 `Popen` + 트리 종료 방식을 택했다.
+- `subprocess.run(timeout=)`이 이 환경에서 실제로 멈추는지는 실험하지 않았다. Windows에서 자식이 파이프를 쥐고 있으면 kill 뒤의 출력 수집에서 대기할 수 있다는 알려진 문제를 근거로 `Popen` + 트리 종료 방식을 택했고, 이 방식이 실제로 동작함은 6.3에서 확인했다 ✅.
 
 ## 6. 검증 결과
 
@@ -252,7 +253,7 @@ vcd_path  : None
 
 | 파일 | 테스트 | 검증 내용 |
 |---|---|---|
-| `test_models.py` | 2 | 기본값, 인스턴스 간 `steps` 비공유 |
+| `test_models.py` | 2 | 기본값, 인스턴스 간 `steps` 비공유 (Phase 2에서 6개로 증가) |
 | `test_runner.py` | 6 | 도구 없음 → 예외 / 비정상 종료 코드를 예외 없이 기록 / stdout·stderr 병합 / `cwd` 적용 / **타임아웃 시 프로세스 트리 종료** / 빠른 프로세스는 타임아웃 미발동 |
 | `test_xsim_adapter.py` | 7 | 단계 순서 / `xvlog` 실패 시 중단 / `xelab` 실패 시 중단 / 소스 없음 예외 / 기존 workdir 예외 / 생성 파일 내용 / **async FIFO end-to-end (Vivado 필요, 없으면 skip)** |
 
@@ -263,8 +264,8 @@ vcd_path  : None
 
 | 항목 | 상태 | 비고 |
 |---|---|---|
-| `xsim`의 종료 코드 (`$error`, `$fatal`) | ✅ | 측정 결과: 정상, $error, $fatal 모두 0. 타임아웃만 None. 시뮬레이션 FAIL은 로그로만 판정 |
-| `$error`/`$fatal`/`[TB] PASS|FAIL`의 xsim 로그 형식 | ✅ | Error:/Fatal: 줄 다음에 Time: ... File: ... Line: 줄이 따라옴, [TB] ...는 줄 맨 앞에 그대로 출력 |
+| `xsim`의 종료 코드 (`$error`, `$fatal`) | ✅ | Phase 2에서 확인: 정상, `$error`, `$fatal` 모두 **0**. 시뮬레이션 FAIL은 로그로 판정 |
+| `$error`/`$fatal`/`[TB] PASS|FAIL`의 xsim 로그 형식 | ✅ | Phase 2에서 샘플 수집 완료 (`tests/data/xsim_*.log`) |
 | 타임아웃으로 죽인 `xsim`의 VCD | ❓ | `close_vcd`가 실행되지 않아 비었거나 잘렸을 수 있음. `vcd_path`는 파일이 있으면 기록하지만 **완전하다는 보장은 없음**. Phase 3에서 고려 |
 | 타임아웃의 비Windows 지원 | ⏸ | `_kill_tree`는 Windows 기준. 다른 OS는 `proc.kill()`만 호출 |
 | 경로에 공백이 있는 경우 | ⏸ | `files.f`에 따옴표가 필요할 수 있음. 현재 경로에는 공백 없음 |
@@ -292,7 +293,7 @@ Phase 0에서 이어진 항목:
 | 2-2 | `xvlog` 로그 파서 | `tests/data/xvlog_*.log`로 **테스트를 먼저** 작성 |
 | 2-3 | `xelab` 로그 파서 | 상위 단계 실패의 파생 에러 구분 규칙 포함 |
 | 2-4 | `xsim` 로그 파서 | `$finish` 시각 추출, 마커/에러 처리. **새 샘플 수집 선행** |
-| 2-5 | `analyze(RunResult, 요청 파일) → SimResult` | 우선순위 규칙 통합 |
+| 2-5 | `analyze(RunResult) → SimResult` | 우선순위 규칙 통합. (실제 구현에서 요청 파일 목록은 인자가 아니라 `RunResult.sources`로 전달) |
 | 2-6 | `run_once`에 판정 출력 연결 | |
 
 상태 집합: `PASS` / `FAIL` / `NO_VERDICT` / `COMPILE_ERROR` / `ELAB_ERROR` / `TIMEOUT`
