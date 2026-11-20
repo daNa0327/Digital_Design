@@ -103,6 +103,54 @@ class VcdReader:
                 out.insert(0, (t0_ps, v0))
         return out
 
+    def net_group(self, name: str, min_changes: int = 2,
+                  same_leaf: bool = True) -> dict[str, list[str]]:
+        """같은 net일 가능성이 있는 다른 이름들.
+
+        alias      : 같은 VCD ID를 공유 (확실히 같은 값)
+        same_history: ID는 다르지만 폭과 변화 이력이 완전히 같음 (**후보**일 뿐, 같은 net이라는 증명은 아님)
+        상수에 가까운 신호의 우연한 일치를 막으려고 기록(초기값 포함)이 min_changes건 미만이면 후보에서 제외하고,
+        same_leaf=True이면 마지막 이름(wr_ck 등)이 같은 신호끼리만 비교한다.
+        """
+        sig = self.info(name)
+        self._loaded(sig)
+        mine = self.changes(name)
+        cands: list[str] = []
+        if len(mine) >= min_changes:
+            leaf = name.rsplit(".", 1)[-1]
+            for other, osig in self._signals.items():
+                if osig.id == sig.id or osig.width != sig.width:
+                    continue
+                if same_leaf and other.rsplit(".", 1)[-1] != leaf:
+                    continue
+                if self._keep is not None and osig.id not in self._keep:
+                    continue
+                if self.changes(other) == mine:
+                    cands.append(other)
+        return {"alias": self.aliases(name), "same_history": cands}
+
+    def status(self, name: str) -> tuple[str, str]:
+        """신호를 읽을 수 있는 상태인지 (상태코드, 설명). 근거 없는 결론을 막기 위한 점검용.
+
+        not_in_vcd : VCD에 이름이 없음 (unpacked array 등은 xsim이 VCD에 기록하지 않음)
+        not_loaded : signals 필터로 적재하지 않음
+        no_changes : 선언만 있고 값 변화 기록이 없음
+        always_x   : 기록된 값이 전부 x/z (구동되지 않았거나 alias 표시 문제일 수 있음)
+        ok         : 읽을 수 있음
+        """
+        if name not in self._signals:
+            return ("not_in_vcd", "VCD에 없는 신호입니다. unpacked array(메모리)는 VCD에 기록되지 않으므로 "
+                                  "포인터/출력 신호로 추론해야 합니다.")
+        sig = self._signals[name]
+        if self._keep is not None and sig.id not in self._keep:
+            return ("not_loaded", "signals 필터에 없어 적재되지 않았습니다.")
+        vals = self._values.get(sig.id, [])
+        if not vals:
+            return ("no_changes", "값 변화 기록이 없습니다 (until_ps 이전에 변화가 없었을 수 있음).")
+        if all(set(v) <= {"x", "z"} for v in vals):
+            return ("always_x", "기록된 값이 전부 x/z입니다. alias(net_group)와 교차 확인하세요.")
+        return ("ok", "")
+
     def edges(self, clock: str, edge: str = "rising") -> list[int]:
         """클럭 에지 시각(ps) 목록. rising: 0->1/x/z 또는 x/z->1, falling: 1->0/x/z 또는 x/z->0."""
         if edge not in ("rising", "falling"):

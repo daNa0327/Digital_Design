@@ -196,6 +196,77 @@ def test_until_ps_stops_reading():
     assert r.value_at("tb.data", 99999) == "00000101"           # 15000의 bx는 읽지 않음
 
 
+NET = """$timescale 1ps $end
+$scope module tb $end
+$var wire 1 ! en $end
+$var wire 1 " c $end
+$var wire 1 # k $end
+$scope module dut $end
+$var wire 1 $ en $end
+$var wire 1 % en2 $end
+$var wire 1 & c $end
+$var wire 1 ' k $end
+$var wire 1 ( dead $end
+$upscope $end
+$upscope $end
+$enddefinitions $end
+#0
+0!
+0$
+0%
+0"
+0&
+0#
+0'
+x(
+#10
+1!
+1$
+1%
+#20
+0!
+0$
+1%
+#30
+1"
+1&
+"""
+
+
+def test_net_group_same_history_is_candidate_with_leaf_match():
+    """ID가 다른 tb.en/dut.en은 이력이 같아 후보. 이력이 같아도 이름(en2)이 다르면 제외."""
+    r = VcdReader.from_text(NET)
+    g = r.net_group("tb.en")
+    assert g == {"alias": [], "same_history": ["tb.dut.en"]}
+    assert r.net_group("tb.en", same_leaf=False)["same_history"] == ["tb.dut.en"]
+
+
+def test_net_group_ignores_constant_signals():
+    """초기값만 있는 상수 신호(k)는 우연히 같아 보여도 묶지 않는다. min_changes로 기준을 조절한다."""
+    r = VcdReader.from_text(NET)
+    assert r.net_group("tb.k")["same_history"] == []
+    assert r.net_group("tb.c")["same_history"] == ["tb.dut.c"]      # 기록 2건(초기값 + 변화 1회)
+    assert r.net_group("tb.c", min_changes=3)["same_history"] == []
+
+
+def test_status_codes():
+    """읽기 상태 점검: 없음 / 미적재 / 변화 없음 / 전부 x / 정상."""
+    r = VcdReader.from_text(NET)
+    assert r.status("tb.mem")[0] == "not_in_vcd"
+    assert r.status("tb.en") == ("ok", "")
+    assert r.status("tb.dut.dead")[0] == "always_x"
+    r2 = VcdReader.from_text(NET, signals=["tb.en"])
+    assert r2.status("tb.k")[0] == "not_loaded"
+    r3 = VcdReader.from_text(NET, until_ps=-1)
+    assert r3.status("tb.en")[0] == "no_changes"
+
+
+def test_net_group_respects_signal_filter():
+    """필터로 적재하지 않은 후보와는 비교하지 않는다(이력이 없어 비교 불가)."""
+    r = VcdReader.from_text(NET, signals=["tb.en"])
+    assert r.net_group("tb.en")["same_history"] == []
+
+
 @pytest.mark.skipif(not SAMPLE.exists(), reason="샘플 VCD 없음")
 def test_real_sample_vcd():
     """실제 async FIFO VCD: 1ps 해상도, 마지막 타임스탬프 400ns, wr_ck의 alias와 별도 ID가 구분된다."""
@@ -207,3 +278,15 @@ def test_real_sample_vcd():
     ids = {r.info(n).id for n in wr}
     assert len(ids) >= 2                       # tb.wr_ck는 별도 ID
     assert any(r.aliases(n) for n in wr)       # dut/c1/m1은 ID를 공유
+
+
+@pytest.mark.skipif(not SAMPLE.exists(), reason="샘플 VCD 없음")
+def test_real_sample_net_group_and_missing_mem():
+    """실제 VCD: tb.wr_ck는 dut.wr_ck와 같은 net 후보로 묶이고(상승 에지 40개), mem은 VCD에 없다."""
+    r = VcdReader.from_file(SAMPLE)
+    top = "async_fifo_tb.wr_ck"
+    assert len(r.edges(top)) == 40
+    g = r.net_group(top)
+    assert "async_fifo_tb.dut.wr_ck" in g["alias"] + g["same_history"]
+    assert not [n for n in r.names() if n.rsplit(".", 1)[-1] == "mem"]
+    assert r.status("async_fifo_tb.dut.m1.mem")[0] == "not_in_vcd"
