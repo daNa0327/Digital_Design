@@ -174,7 +174,8 @@ FIFO 메모리 내용은 VCD로 볼 수 없다. Debug Agent는 포인터와 `dat
 - **① 같은 ID를 공유하는 alias**: `dut.wr_ck`, `c1.wr_ck`, `m1.wr_ck` (ID `*`). 값 이력은 하나뿐.
 - **② ID는 다르지만 같은 net**: `tb.wr_ck`(`!`)와 `dut.wr_ck`(`*`).
 - 파형 뷰어에서 `dut.wr_ck`, `c1.wr_ck`, `dut.reset` 등이 X로 보였던 것은, 뷰어가 ID를 공유하는 신호 중 하나만 표시하는 문제로 **추정**한다. 리셋이 정상 전달됐다는 근거는 `sync_wr2rd.reset` 펄스와 포인터 초기화.
-- 확정하려면: GTKWave로 열어 해당 신호가 토글하는지 확인하거나, ID `*`의 값 변화 줄 수를 센다. (미수행)
+- 확정하려면: GTKWave로 열어 해당 신호가 토글하는지 확인하거나, ID `*`의 값 변화 줄 수를 센다.
+- **Phase 3에서 일부 확인 ✅:** `VcdReader`로 읽으면 `tb.wr_ck`의 상승 에지가 40개이고, `dut.wr_ck`·`c1.wr_ck`·`m1.wr_ck`(ID `*`)는 `tb.wr_ck`와 **변화 이력이 완전히 같다**(`net_group`의 `same_history`). 즉 ID `*`는 실제로 토글한다. 뷰어에서 X로 보인 원인이 뷰어의 alias 표시 문제라는 점은 여전히 추정이다 (뷰어로 재확인은 미수행).
 
 ### 6.3 기준 TB는 self-checking이 아님 ✅
 
@@ -245,7 +246,7 @@ empty <= (wr_gray_sync == rd_gray);
 | 메모리 | VCD에 `mem` 없음 → 포인터/`data_out`으로 추론하거나 별도 방법 필요 |
 | 실행 격리 | 실행마다 새 workdir, 원본 파일은 읽기 전용 |
 
-VcdReader 저장 구조 (ID 덮어쓰기 방지):
+VcdReader 저장 구조 (ID 덮어쓰기 방지). 아래는 설계 당시 스케치이고, 실제 구현(`core/vcd_reader.py`)의 이름은 `_signals`(이름→신호), `_id_names`(ID→이름들), `_times`/`_values`(ID별 변화 시각·값 병렬 리스트)다:
 
 ```python
 self.id2names = defaultdict(list)   # ID -> [계층 이름들]
@@ -259,7 +260,7 @@ self.changes  = defaultdict(list)   # ID -> [(t, val)]
 |---|---|---|
 | 로그 5종 수집 (컴파일 에러, 엘라보레이션 에러, `$error` FAIL, 타임아웃) | ✅ | Phase 2에서 수집 완료 (`tests/data/`, `docs/NOTES_ps2.md` 참고) |
 | `empty` 버그 확장 실험 (`#100; $finish;`) | ⏸ | 수정은 Agent 완성 후 |
-| GTKWave로 alias/X 표시 재확인 | 미수행 | 6.2 참고 |
+| GTKWave로 alias/X 표시 재확인 | 미수행 | 6.2 참고. ID `*`가 토글한다는 사실 자체는 Phase 3에서 확인 |
 | 파형 #4 (읽기 값 순서 01→08) 확대 확인 | 미수행 | 235~260ns 등 읽기 구간 |
 
 ## 11. Phase 1 시작 전 확인할 것
@@ -277,6 +278,8 @@ self.changes  = defaultdict(list)   # ID -> [(t, val)]
 2. Phase 1: `XsimSim` 어댑터 (xvlog → xelab → xsim, workdir 격리, Tcl 템플릿 생성)
 3. Phase 2: 로그 파서 + 공통 `SimResult` (필요한 에러 케이스를 이때 하나씩 생성)
 4. Phase 3: VcdReader (ID 기준 저장, alias 처리, 구간 조회)
+
+※ 1~4 모두 완료되었다 (`docs/NOTES_ps1.md`, `NOTES_ps2.md`, `NOTES_ps3.md` 참고).
 
 ## 13. 명령어 요약
 

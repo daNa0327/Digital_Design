@@ -266,7 +266,7 @@ vcd_path  : None
 |---|---|---|
 | `xsim`의 종료 코드 (`$error`, `$fatal`) | ✅ | Phase 2에서 확인: 정상, `$error`, `$fatal` 모두 **0**. 시뮬레이션 FAIL은 로그로 판정 |
 | `$error`/`$fatal`/`[TB] PASS|FAIL`의 xsim 로그 형식 | ✅ | Phase 2에서 샘플 수집 완료 (`tests/data/xsim_*.log`) |
-| 타임아웃으로 죽인 `xsim`의 VCD | ❓ | `close_vcd`가 실행되지 않아 비었거나 잘렸을 수 있음. `vcd_path`는 파일이 있으면 기록하지만 **완전하다는 보장은 없음**. Phase 3에서 고려 |
+| 타임아웃으로 죽인 `xsim`의 VCD | ⚠️ | `close_vcd`가 실행되지 않아 비었거나 잘렸을 수 있다고 봤으나, Phase 3에서 확인한 결과 **읽을 수 있는 불완전한 파일이 남고** 끊기는 지점은 실행마다 다르다 (2.4~94MB, 마지막 줄은 온전). 완전하다는 보장은 여전히 없음 (`docs/NOTES_ps3.md` 3.2절) |
 | 타임아웃의 비Windows 지원 | ⏸ | `_kill_tree`는 Windows 기준. 다른 OS는 `proc.kill()`만 호출 |
 | 경로에 공백이 있는 경우 | ⏸ | `files.f`에 따옴표가 필요할 수 있음. 현재 경로에는 공백 없음 |
 | `xelab` 첫 실행 시간 편차 | ⚠️ | 8.3초 → 3.0초. 도구 로딩/캐시 효과로 **추정** |

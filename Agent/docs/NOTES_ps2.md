@@ -150,7 +150,7 @@ XsimSim.run() ──▶ RunResult ──▶ analyze() ──▶ SimResult
 |---|---|---|
 | `xsim` 종료 코드 ≠ 0 | ❓ | 관측한 적 없음 |
 | `$fatal`이 시뮬을 직접 끝낸다는 것 | ⚠️ | `$finish` 줄 형식으로 추정 |
-| 타임아웃으로 죽인 `xsim`의 VCD | ❓ | `hang` 실행에서도 `dump.vcd`는 존재함. 완전한지는 확인 안 함 (끝부분 확인 필요). Phase 3에서 잘린 파일을 견디게 설계 |
+| 타임아웃으로 죽인 `xsim`의 VCD | ⚠️ | Phase 3에서 확인: 읽을 수 있는 불완전한 파일이 남고 끊기는 지점은 비결정적 (마지막 줄은 온전). 잘린 줄을 견디도록 설계함 (`docs/NOTES_ps3.md` 3.2절) |
 | TB의 `$display("Error: ...")` | ⏸ | 시뮬레이터 에러와 구분하려고 `Time:` 줄을 필수로 해서 에러로 잡히지 않음. `[TB] FAIL` 규약으로만 인정 |
 | parameter 있는 모듈, SV 구문 | ⏸ | `xelab` 파서 확장 필요 |
 | 샘플 로그의 로컬 경로 | ⚠️ | `C:/Users/Junyoung/...`가 들어 있음. 공개 시 치환 고려 (파서는 경로를 구조로만 다뤄 영향 없음) |
@@ -165,7 +165,7 @@ Phase 0, 1에서 이어진 항목 (async FIFO `empty` 비대칭, 골든 DUT 문�
 - **테스트 개수를 기대값과 대조한다.** 파일 덮어쓰기로 테스트가 사라지거나, 구현 대신 테스트 코드가 `core/analyzer.py`에 저장되어 순환 import가 난 일이 있었다.
 - **저장소 구조 확인.** `Agent/` 안에 별도 `.git`이 있어 VS Code가 다른 저장소 상태를 보여 줬다. `Test-Path Agent\.git`으로 확인.
 
-## 9. 다음 단계 (Phase 3: VcdReader)
+## 9. 다음 단계 (Phase 3: VcdReader) — ✅ 완료, 결과는 `docs/NOTES_ps3.md`
 
 | 확인된 사실 | 설계 |
 |---|---|

@@ -11,10 +11,10 @@ RTL을 입력하면 **Testbench 생성 → 시뮬레이션 → 로그 분석 →
 
 | 폴더 | 역할 | 상태 |
 |---|---|---|
-| `core/` | 데이터 모델(`StepResult`, `RunResult`, `ErrorItem`, `SimResult`), 로그 파서, 판정(`analyze`) | ✅ |
+| `core/` | 데이터 모델(`StepResult`, `RunResult`, `ErrorItem`, `SimResult`), 로그 파서, 판정(`analyze`), VCD 읽기(`VcdReader`)와 Agent용 VCD 도구(`VcdTools`) | ✅ |
 | `sim/` | 시뮬레이터 실행 계층. `Simulator` 추상 클래스, `XsimSim` 어댑터, 도구 실행기(`run_tool`), 작업 폴더 생성, Tcl 템플릿 | ✅ |
 | `scripts/` | 터미널 CLI (`run_once.py`: 실행 + 판정 출력)와 로그 샘플 수집 도구 | ✅ |
-| `tests/` | 단위·통합 테스트 47개, 그리고 테스트용 실제 xsim 로그·VCD 샘플(`tests/data/`) | ✅ |
+| `tests/` | 단위·통합 테스트 78개, 그리고 테스트용 실제 xsim 로그·VCD 샘플(`tests/data/`) | ✅ |
 | `docs/` | 단계별 개발 기록 (`NOTES_p0.md`, `NOTES_ps1.md`, `NOTES_ps2.md`) | ✅ |
 | `Manual_test/` | 자동화 전에 `xvlog → xelab → xsim` 흐름을 손으로 검증한 기록 (첫 대상 DUT: async FIFO) | ✅ |
 | `runs/` | 실행마다 생성되는 고유 작업 폴더 (Git 추적 제외) | ✅ |
@@ -30,7 +30,9 @@ Agent/
 ├── core/
 │   ├── models.py               # StepResult, RunResult, ErrorItem, SimResult
 │   ├── log_parser.py           # xvlog / xelab / xsim 로그 파서, time_to_ps
-│   └── analyzer.py             # analyze(RunResult) -> SimResult 판정
+│   ├── analyzer.py             # analyze(RunResult) -> SimResult 판정
+│   ├── vcd_reader.py           # 시뮬레이터 무관 VCD 조회 (ID 기준 이력, 에지 샘플링, net 후보)
+│   └── vcd_tools.py            # Agent(LLM)용 VCD 도구 (출력 상한, 오류를 dict로 반환)
 ├── sim/
 │   ├── base.py                 # Simulator 추상 클래스
 │   ├── runner.py               # run_tool(): 도구 한 단계 실행 (타임아웃, 프로세스 트리 종료)
@@ -48,11 +50,14 @@ Agent/
 │   ├── test_xsim_adapter.py    #  7
 │   ├── test_log_parser.py      # 13
 │   ├── test_analyzer.py        # 13
-│   └── test_pipeline.py        #  2  (실제 Vivado 실행 → 판정)
+│   ├── test_pipeline.py        #  2  (실제 Vivado 실행 → 판정)
+│   ├── test_vcd_reader.py      # 21
+│   └── test_vcd_tools.py       # 10
 ├── docs/
 │   ├── NOTES_p0.md             # Phase 0: 수동 실행
 │   ├── NOTES_ps1.md            # Phase 1: XsimSim 어댑터
-│   └── NOTES_ps2.md            # Phase 2: 로그 파서와 판정
+│   ├── NOTES_ps2.md            # Phase 2: 로그 파서와 판정
+│   └── NOTES_ps3.md            # Phase 3: VCD Reader와 Agent용 도구
 ├── Manual_test/                # Phase 0: 수동 실행 검증
 │   ├── dut/                    # async FIFO RTL
 │   ├── tb/                     # 기준 Testbench
@@ -73,7 +78,6 @@ Agent/
 │   ├── tools.py                # LLM에 노출할 Tool 정의
 │   └── prompts/                # TB 생성, 디버깅 프롬프트
 ├── core/
-│   ├── vcd_reader.py           # 시뮬레이터 무관 VCD 조회 (Phase 3)
 │   ├── analyzer_rtl.py         # RTL Analyzer
 │   ├── tb_generator.py
 │   └── report.py
@@ -181,6 +185,20 @@ errors    :  (* = 주 원인)
     [xvlog] ERROR VRFC 10-8530: module 'fifo_mem' is ignored due to previous errors (...:3)
 ```
 
+### VCD Reader / VCD Tools (✅)
+
+`VcdReader`는 시뮬레이터와 무관하게 VCD를 읽고, `VcdTools`는 그 위에 LLM용 도구 3개를 얹습니다.
+
+| 구분 | 내용 |
+|---|---|
+| ID 기준 저장 | 같은 VCD ID를 여러 계층 이름이 공유(alias)하므로 이력을 이름이 아니라 ID로 저장합니다. |
+| 값 의미 | VCD는 값이 바뀔 때만 기록하므로 `value_at(t)`는 t 이하의 마지막 변화값입니다. `end_time_ps`는 마지막 타임스탬프이고 시뮬 종료 시각이 아닙니다. |
+| 에지 샘플링 | `sample_on_edge`는 기본적으로 에지 **직전** 값(플립플롭이 읽는 값)을 반환합니다. |
+| net 후보 | `net_group`은 확실한 alias와 "이력이 같은 후보"를 구분해서 반환합니다. 후보는 같은 net의 증명이 아닙니다. |
+| 조회 상태 | `status`가 `not_in_vcd`(예: `mem` 배열), `not_loaded`, `no_changes`, `always_x`, `ok`를 알려 줍니다. |
+| 큰 파일 | 줄 단위 스트리밍 파싱, 신호/시간 구간 적재 필터. 143MB는 약 8.5초에 메모리 1.1GB (합성 데이터 기준) |
+| LLM 도구 | `list_signals` / `read_vcd_signal` / `sample_signals`. 출력 상한, `truncated`와 `next_t0_ps`, 오류는 dict로 반환 |
+
 ### Debug Agent Loop (📝)
 
 FAIL일 때만 동작하는 Agent 구간입니다. LLM이 도구를 골라 쓰며 **가설 → 증거 수집 → 가설 수정**을 반복하고, 구조화된 결론(`final_report`)으로 종료합니다.
@@ -188,8 +206,9 @@ FAIL일 때만 동작하는 Agent 구간입니다. LLM이 도구를 골라 쓰�
 | Tool | 역할 |
 |---|---|
 | `get_log_snippet` | 로그의 특정 구간만 조회 (전체 로그를 LLM에 넣지 않음) |
-| `list_signals` | VCD의 계층·신호 목록 조회 |
-| `read_vcd_signal` | 신호·시간 구간만 조회. 같은 ID를 공유하는 alias 후보를 함께 반환 |
+| `list_signals` | VCD의 계층·신호 목록 조회 (✅ `VcdTools`) |
+| `read_vcd_signal` | 신호·시간 구간만 조회. alias와 같은 이력 후보를 함께 반환 (✅ `VcdTools`) |
+| `sample_signals` | 클럭 에지마다 여러 신호 샘플링 (✅ `VcdTools`) |
 | `read_rtl` | RTL의 특정 줄 범위 조회 |
 | `propose_fix` | 수정안을 diff로 저장만 함 (자동 적용 안 함) |
 | `rerun_sim` | `runs/` 복사본에서만 재시뮬레이션 |
@@ -212,7 +231,7 @@ DUT별로 버그를 주입한 변형본(`bugs/`)과 정답 메타데이터(위�
 
 | 구분 | 내용 |
 |---|---|
-| 자동 테스트 | 47개 (`pytest -q`). Vivado가 없으면 실제 실행 테스트 3개는 건너뜀 |
+| 자동 테스트 | 78개 (`pytest -q`). Vivado가 없으면 실제 실행 테스트 3개, 샘플 VCD가 없으면 샘플 기반 테스트 3개는 건너뜀 |
 | 실제 Vivado 실행 | 정상 / PASS / FAIL / `$error` / `$fatal` / PASS+에러 / 타임아웃 / 컴파일 에러 8종을 실제로 돌려 판정이 모두 기대와 일치 |
 | 샘플 데이터 | 손으로 쓴 로그가 아니라 실제 xsim 출력 (`tests/data/README.md`) |
 
@@ -242,8 +261,8 @@ python -m scripts.run_once --top async_fifo_tb --label fifo `
 | 0 | `xvlog → xelab → xsim` 수동 실행, Tcl로 VCD 생성 검증 (`docs/NOTES_p0.md`) | ✅ |
 | 1 | `XsimSim` 어댑터: 격리 실행, 중단 정책, 타임아웃과 프로세스 트리 종료 (`docs/NOTES_ps1.md`) | ✅ |
 | 2 | 로그 파서와 `SimResult` 판정 (`docs/NOTES_ps2.md`) | ✅ |
-| 3 | VCD Reader (ID 기준 이력, alias 처리, 구간 조회) | 🚧 |
-| 4 | 버그 주입 세트와 평가 하네스 | 📝 |
+| 3 | VCD Reader (ID 기준 이력, alias, 에지 샘플링, net 후보)와 Agent용 도구 (`docs/NOTES_ps3.md`) | ✅ |
+| 4 | 버그 주입 세트와 평가 하네스 | 🚧 |
 | 5 | RTL Analyzer | 📝 |
 | 6 | TB Generator + Compile Gate | 📝 |
 | 7 | Debug Agent Loop | 📝 |
