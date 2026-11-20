@@ -64,7 +64,7 @@ def test_time_to_ps():
     assert time_to_ps("1", "parsec") is None
 
 def test_xsim_ok_without_marker():
-    info = parse_xsim(read("sim_tcl_ok.log"))
+    info = parse_xsim(read("xsim_ok.log"))
     assert info.finish_time_ps == 402_000
     assert info.finish_line == 131
     assert info.tb_markers == []

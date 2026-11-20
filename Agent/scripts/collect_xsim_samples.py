@@ -1,5 +1,6 @@
 # xsim 로그 샘플 수집 (일회성 도구). TB 끝부분만 바꾼 복사본을 돌려 실제 출력을 저장한다.
 import re
+import sys
 from pathlib import Path
 
 from sim.workdir import new_workdir
@@ -18,6 +19,7 @@ END = "#50; $finish;"
 
 # 이름: (END를 대체할 코드, xsim 타임아웃 초)
 CASES = {
+    "ok":              (END, 60),
     "pass_marker":     ('#50; $display("[TB] PASS"); $finish;', 60),
     "fail_marker":     ('#50; $display("[TB] FAIL: dummy check"); $finish;', 60),
     "error":           ('#50; $error("dummy error"); $finish;', 60),
@@ -38,7 +40,9 @@ def main() -> None:
     VARIANTS.mkdir(parents=True, exist_ok=True)
 
     summary = []
-    for name, (repl, sim_timeout) in CASES.items():
+    names = sys.argv[1:] or list(CASES)
+    for name in names:
+        repl, sim_timeout = CASES[name]
         tb_path = VARIANTS / f"tb_{name}.v"
         tb_path.write_text(TB.replace(END, repl), encoding="utf-8")
 
