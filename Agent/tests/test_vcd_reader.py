@@ -113,6 +113,89 @@ def test_unknown_name_raises_keyerror():
     assert r.find("clk") == ["tb.clk", "tb.dut.clk"]
 
 
+EDGE = """$timescale 1ps $end
+$scope module t $end
+$var wire 1 ! ck $end
+$var wire 1 " q $end
+$var wire 1 # ck2 $end
+$upscope $end
+$enddefinitions $end
+#0
+x!
+0"
+0#
+#10
+0!
+#20
+1!
+1"
+#30
+0!
+#40
+1!
+0"
+1#
+#50
+0!
+0#
+#60
+1!
+"""
+
+
+def test_edges_follow_verilog_rules():
+    """Verilog 규칙: 상승 20/40/60, 하강 10(x->0, negedge)/30/50. x->1도 상승 에지로 센다."""
+    r = VcdReader.from_text(EDGE)
+    assert r.edges("t.ck") == [20, 40, 60]
+    assert r.edges("t.ck", "falling") == [10, 30, 50]
+    x1 = VcdReader.from_text("$timescale 1ps $end\n$scope module t $end\n$var wire 1 ! c $end\n"
+                             "$upscope $end\n$enddefinitions $end\n#0\nx!\n#5\n1!\n")
+    assert x1.edges("t.c") == [5]
+    with pytest.raises(ValueError):
+        r.edges("t.ck", "both")
+
+
+def test_sample_before_vs_after_edge():
+    """q는 20에서 에지와 같은 시각에 바뀐다. before는 이전 값(0), after는 새 값(1)이 보인다."""
+    r = VcdReader.from_text(EDGE)
+    assert r.sample_on_edge("t.ck", ["t.q"])[0] == (20, {"t.q": "0"})
+    assert r.sample_on_edge("t.ck", ["t.q"], when="after")[0] == (20, {"t.q": "1"})
+    assert [d["t.q"] for _, d in r.sample_on_edge("t.ck", ["t.q"])] == ["0", "1", "0"]
+
+
+def test_sample_range_filter():
+    """t0/t1로 에지를 구간 제한한다 (양 끝 포함)."""
+    r = VcdReader.from_text(EDGE)
+    assert [t for t, _ in r.sample_on_edge("t.ck", ["t.q"], 40, 60)] == [40, 60]
+    assert r.sample_on_edge("t.ck", ["t.q"], 21, 39) == []
+
+
+def test_two_clock_domains_sample_same_signal_differently():
+    """클럭이 다르면 같은 신호도 다른 시각에 샘플된다 (ck: 20/40/60, ck2: 40)."""
+    r = VcdReader.from_text(EDGE)
+    assert [t for t, _ in r.sample_on_edge("t.ck2", ["t.q"])] == [40]
+    assert r.sample_on_edge("t.ck2", ["t.q"])[0][1]["t.q"] == "1"
+
+
+def test_signal_filter_loads_only_requested_with_aliases(tmp_path):
+    """signals 필터는 요청한 신호만 적재한다. 적재 안 한 신호는 조용히 비지 않고 ValueError."""
+    f = tmp_path / "a.vcd"
+    f.write_text(VCD, encoding="utf-8")
+    r = VcdReader.from_file(f, signals=["tb.clk"])
+    assert r.changes("tb.dut.clk") == r.changes("tb.clk")      # alias는 같은 ID라 함께 적재
+    with pytest.raises(ValueError):
+        r.changes("tb.data")
+    with pytest.raises(KeyError):
+        VcdReader.from_file(f, signals=["tb.nope"])
+
+
+def test_until_ps_stops_reading():
+    """until_ps 이후의 변화는 읽지 않는다. end_time_ps도 그 이전 값."""
+    r = VcdReader.from_text(VCD, until_ps=10000)
+    assert r.end_time_ps == 10000
+    assert r.value_at("tb.data", 99999) == "00000101"           # 15000의 bx는 읽지 않음
+
+
 @pytest.mark.skipif(not SAMPLE.exists(), reason="샘플 VCD 없음")
 def test_real_sample_vcd():
     """실제 async FIFO VCD: 1ps 해상도, 마지막 타임스탬프 400ns, wr_ck의 alias와 별도 ID가 구분된다."""
