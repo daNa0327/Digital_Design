@@ -1,0 +1,220 @@
+{
+    "dut": "sync_fifo",
+    "golden_rtl": "dut/sync_fifo/rtl",
+    "top": "sync_fifo_sc_tb",
+    "bugs": [
+        {
+            "id": "B01_read_ptr_no_inc",
+            "dut": "sync_fifo",
+            "type": "pointer",
+            "file": "fifo_ctrl.v",
+            "find": "rd_ptr <= rd_ptr + 1;",
+            "replace": "rd_ptr <= rd_ptr;",
+            "expect_count": 3,
+            "description": "read 단독 동작에서 rd_ptr이 증가하지 않아 같은 데이터를 계속 읽는다",
+            "equivalent": false
+        },
+        {
+            "id": "B02_write_ptr_no_inc",
+            "dut": "sync_fifo",
+            "type": "pointer",
+            "file": "fifo_ctrl.v",
+            "find": "wr_ptr <= wr_ptr + 1;",
+            "replace": "wr_ptr <= wr_ptr;",
+            "expect_count": 3,
+            "description": "write 단독 동작에서 wr_ptr이 증가하지 않아 같은 주소를 덮어쓴다",
+            "equivalent": false
+        },
+        {
+            "id": "B03_both_rd_ptr_stuck",
+            "dut": "sync_fifo",
+            "type": "pointer",
+            "file": "fifo_ctrl.v",
+            "find": "rd_ptr <= rd_ptr + 1;",
+            "replace": "rd_ptr <= rd_ptr;",
+            "expect_count": 3,
+            "description": "동시 write+read(데이터 있음)에서 rd_ptr이 증가하지 않는다",
+            "equivalent": false,
+            "occurrence": 2
+        },
+        {
+            "id": "B04_both_wr_ptr_stuck",
+            "dut": "sync_fifo",
+            "type": "pointer",
+            "file": "fifo_ctrl.v",
+            "find": "wr_ptr <= wr_ptr + 1;",
+            "replace": "wr_ptr <= wr_ptr;",
+            "expect_count": 3,
+            "description": "동시 write+read(데이터 있음)에서 wr_ptr이 증가하지 않는다",
+            "equivalent": false,
+            "occurrence": 2
+        },
+        {
+            "id": "B05_read_count_dec2",
+            "dut": "sync_fifo",
+            "type": "pointer",
+            "file": "fifo_ctrl.v",
+            "find": "count  <= count - 1;",
+            "replace": "count  <= count - 2;",
+            "expect_count": 2,
+            "description": "read 단독 동작에서 count가 2씩 감소한다",
+            "equivalent": false
+        },
+        {
+            "id": "B06_write_count_no_inc",
+            "dut": "sync_fifo",
+            "type": "pointer",
+            "file": "fifo_ctrl.v",
+            "find": "count  <= count + 1;",
+            "replace": "count  <= count;",
+            "expect_count": 2,
+            "description": "write 단독 동작에서 count가 증가하지 않아 full/empty가 어긋난다",
+            "equivalent": false
+        },
+        {
+            "id": "B07_full_at_7",
+            "dut": "sync_fifo",
+            "type": "flag",
+            "file": "fifo_ctrl.v",
+            "find": "count == 8)",
+            "replace": "count == 7)",
+            "expect_count": 1,
+            "description": "full이 count==7에서 켜져 실제 깊이가 7이 된다",
+            "equivalent": false
+        },
+        {
+            "id": "B08_empty_at_1",
+            "dut": "sync_fifo",
+            "type": "flag",
+            "file": "fifo_ctrl.v",
+            "find": "count == 0)",
+            "replace": "count == 1)",
+            "expect_count": 1,
+            "description": "empty가 count==1에서 켜져 마지막 데이터를 읽을 수 없다",
+            "equivalent": false
+        },
+        {
+            "id": "B09_full_never",
+            "dut": "sync_fifo",
+            "type": "flag",
+            "file": "fifo_ctrl.v",
+            "find": "count == 8)",
+            "replace": "count == 9)",
+            "expect_count": 1,
+            "description": "full이 켜지지 않아 가득 찬 뒤에도 write가 통과한다",
+            "equivalent": false
+        },
+        {
+            "id": "B10_reset_count_one",
+            "dut": "sync_fifo",
+            "type": "reset",
+            "file": "fifo_ctrl.v",
+            "find": "count   <= 0;",
+            "replace": "count   <= 1;",
+            "expect_count": 1,
+            "description": "리셋 후 count가 1이라 빈 FIFO가 empty로 보이지 않는다",
+            "equivalent": false
+        },
+        {
+            "id": "B11_reset_rd_ptr_one",
+            "dut": "sync_fifo",
+            "type": "reset",
+            "file": "fifo_ctrl.v",
+            "find": "rd_ptr  <= 0;",
+            "replace": "rd_ptr  <= 1;",
+            "expect_count": 1,
+            "description": "리셋 후 rd_ptr이 1이라 첫 읽기가 엉뚱한 주소를 읽는다",
+            "equivalent": false
+        },
+        {
+            "id": "B12_mem_read_addr_wr",
+            "dut": "sync_fifo",
+            "type": "memory",
+            "file": "fifo_mem.v",
+            "find": "data_out <= mem[rd_addr];",
+            "replace": "data_out <= mem[wr_addr];",
+            "expect_count": 1,
+            "description": "읽기 주소로 wr_addr를 사용한다",
+            "equivalent": false
+        },
+        {
+            "id": "B13_mem_write_data_plus1",
+            "dut": "sync_fifo",
+            "type": "memory",
+            "file": "fifo_mem.v",
+            "find": "mem[wr_addr] <= data_in;",
+            "replace": "mem[wr_addr] <= data_in + 1;",
+            "expect_count": 1,
+            "description": "메모리에 data_in+1을 저장한다",
+            "equivalent": false
+        },
+        {
+            "id": "B14_mem_read_ungated",
+            "dut": "sync_fifo",
+            "type": "memory",
+            "file": "fifo_mem.v",
+            "find": "if (rd_en) begin",
+            "replace": "if (1'b1) begin",
+            "expect_count": 1,
+            "description": "rd_en과 무관하게 data_out이 매 클럭 갱신된다",
+            "equivalent": false
+        },
+        {
+            "id": "B15_no_full_guard",
+            "dut": "sync_fifo",
+            "type": "guard",
+            "file": "sync_fifo.v",
+            "find": "wr_en && !full",
+            "replace": "wr_en",
+            "expect_count": 1,
+            "description": "top의 full 가드가 없어 full에서도 메모리에 쓴다",
+            "equivalent": false
+        },
+        {
+            "id": "B16_no_empty_guard",
+            "dut": "sync_fifo",
+            "type": "guard",
+            "file": "sync_fifo.v",
+            "find": "rd_en && !empty",
+            "replace": "rd_en",
+            "expect_count": 1,
+            "description": "top의 empty 가드가 없어 empty에서도 메모리를 읽는다",
+            "equivalent": false
+        },
+        {
+            "id": "B17_both_ignored_at_7",
+            "dut": "sync_fifo",
+            "type": "corner",
+            "file": "fifo_ctrl.v",
+            "find": "if (!empty && !full) begin",
+            "replace": "if (!empty && count < 7) begin",
+            "expect_count": 1,
+            "description": "count==7에서 동시 write+read가 둘 다 무시된다",
+            "equivalent": false
+        },
+        {
+            "id": "E01_dead_full_branch",
+            "dut": "sync_fifo",
+            "type": "pointer",
+            "file": "fifo_ctrl.v",
+            "find": "rd_ptr <= rd_ptr + 1;",
+            "replace": "wr_ptr <= wr_ptr + 1;",
+            "expect_count": 3,
+            "description": "full에서 동시 write+read 분기의 rd_ptr 증가를 wr_ptr로 바꾼다. top이 full에서 write를 막으므로 이 분기는 도달 불가",
+            "equivalent": true,
+            "occurrence": 3
+        },
+        {
+            "id": "E02_dead_empty_branch",
+            "dut": "sync_fifo",
+            "type": "pointer",
+            "file": "fifo_ctrl.v",
+            "find": "count  <= count + 1;",
+            "replace": "count  <= count;",
+            "expect_count": 2,
+            "description": "empty에서 동시 write+read 분기의 count 증가를 제거한다. top이 empty에서 read를 막으므로 이 분기는 도달 불가",
+            "equivalent": true,
+            "occurrence": 2
+        }
+    ]
+}
