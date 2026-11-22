@@ -130,7 +130,7 @@ dump.vcd ──▶ VcdReader ──▶ VcdTools ──▶ (Phase 7) Debug Agent
 | LLM이 도구를 실제로 올바르게 쓰는지 | ❓ | Phase 7에서 검증 |
 | 시뮬레이터 로그와 VCD의 결합 | ⏸ | 에러 시각(`time_ps`)으로 VCD 구간을 조회하는 흐름은 Phase 7에서 |
 
-Phase 0~2에서 이어진 항목 (async FIFO `empty` 비대칭, 골든 DUT 문제, 기준 TB가 self-checking이 아님)은 그대로 보류다.
+Phase 0~2에서 이어진 항목 중 골든 DUT 문제와 self-checking TB는 Phase 4에서 sync FIFO로 해결했다. async FIFO `empty` 비대칭은 계속 보류다.
 
 ## 8. 작업 중 얻은 교훈
 
@@ -140,12 +140,12 @@ Phase 0~2에서 이어진 항목 (async FIFO `empty` 비대칭, 골든 DUT 문�
 - **"후보"와 "사실"을 이름으로 구분한다.** `alias`(확실)와 `same_history_candidates`(후보)를 필드 이름부터 나눠서 Agent가 둘을 같은 확신으로 쓰지 못하게 했다.
 - **도구는 실패해도 루프를 죽이면 안 된다.** 오류를 dict로 돌려주면 LLM이 이름을 고쳐서 다시 시도할 수 있다.
 
-## 9. 다음 단계 (Phase 4: 버그 주입 세트와 평가 하네스)
+## 9. 다음 단계 (Phase 4: 버그 주입 세트와 평가 하네스) — ✅ 완료, 결과는 `docs/NOTES_ps4.md`
 
 | 확인된 사실 | 설계 |
 |---|---|
 | 기준 TB는 self-checking이 아님 | 평가용 TB에 `[TB] PASS/FAIL` 규약 필요 |
-| async FIFO의 `empty` 비대칭은 Agent 완성 후 수정하기로 함 | 골든 DUT는 다른 DUT 또는 수정본으로 |
+| async FIFO의 `empty` 비대칭은 Agent 완성 후 수정하기로 함 | 골든 DUT는 다른 DUT 또는 수정본으로 (실제로는 sync FIFO를 골든으로 선택) |
 | 에러 시각은 `ErrorItem.time_ps`, 파형은 `VcdTools`로 조회 | 정답 메타데이터(버그 위치, 유형, 첫 이상 시각)와 맞춰 볼 수 있어야 함 |
 
 | # | 내용 |

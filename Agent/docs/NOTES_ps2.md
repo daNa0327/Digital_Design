@@ -155,7 +155,7 @@ XsimSim.run() ──▶ RunResult ──▶ analyze() ──▶ SimResult
 | parameter 있는 모듈, SV 구문 | ⏸ | `xelab` 파서 확장 필요 |
 | 샘플 로그의 로컬 경로 | ⚠️ | `C:/Users/Junyoung/...`가 들어 있음. 공개 시 치환 고려 (파서는 경로를 구조로만 다뤄 영향 없음) |
 
-Phase 0, 1에서 이어진 항목 (async FIFO `empty` 비대칭, 골든 DUT 문제, 기준 TB가 self-checking이 아님)은 그대로 보류다.
+Phase 0, 1에서 이어진 항목 중 골든 DUT 문제와 self-checking TB는 Phase 4에서 sync FIFO로 해결했다 (`docs/NOTES_ps4.md`). async FIFO `empty` 비대칭은 계속 보류다.
 
 ## 8. 작업 중 얻은 교훈
 

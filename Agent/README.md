@@ -11,17 +11,17 @@ RTL을 입력하면 **Testbench 생성 → 시뮬레이션 → 로그 분석 →
 
 | 폴더 | 역할 | 상태 |
 |---|---|---|
-| `core/` | 데이터 모델(`StepResult`, `RunResult`, `ErrorItem`, `SimResult`), 로그 파서, 판정(`analyze`), VCD 읽기(`VcdReader`)와 Agent용 VCD 도구(`VcdTools`) | ✅ |
+| `core/` | 데이터 모델(`StepResult`, `RunResult`, `ErrorItem`, `SimResult`), 로그 파서, 판정(`analyze`), VCD 읽기(`VcdReader`)와 Agent용 VCD 도구(`VcdTools`), 버그 주입(`bugs.py`), 평가 하네스(`evaluator.py`), 평가 리포트(`eval_report.py`) | ✅ |
 | `sim/` | 시뮬레이터 실행 계층. `Simulator` 추상 클래스, `XsimSim` 어댑터, 도구 실행기(`run_tool`), 작업 폴더 생성, Tcl 템플릿 | ✅ |
-| `scripts/` | 터미널 CLI (`run_once.py`: 실행 + 판정 출력)와 로그 샘플 수집 도구 | ✅ |
-| `tests/` | 단위·통합 테스트 78개, 그리고 테스트용 실제 xsim 로그·VCD 샘플(`tests/data/`) | ✅ |
-| `docs/` | 단계별 개발 기록 (`NOTES_p0.md`, `NOTES_ps1.md`, `NOTES_ps2.md`) | ✅ |
+| `scripts/` | 터미널 CLI (`run_once.py`: 실행 + 판정 출력, `run_eval.py`: 평가 실행, `make_baseline_report.py`: 리포트 생성)와 로그 샘플 수집 도구 | ✅ |
+| `tests/` | 단위·통합 테스트 98개, 그리고 테스트용 실제 xsim 로그·VCD 샘플(`tests/data/`) | ✅ |
+| `docs/` | 단계별 개발 기록 (`NOTES_p0.md` ~ `NOTES_ps4.md`) | ✅ |
 | `Manual_test/` | 자동화 전에 `xvlog → xelab → xsim` 흐름을 손으로 검증한 기록 (첫 대상 DUT: async FIFO) | ✅ |
 | `runs/` | 실행마다 생성되는 고유 작업 폴더 (Git 추적 제외) | ✅ |
 | `agent/` | LLM 기반 TB Generator, Debug Agent Loop (Tool Use) | 📝 |
-| `dut/` | 검증 대상 RTL 모음 (UART, SPI, FIFO, I2C) | 📝 |
-| `bugs/` | 의도적으로 버그를 주입한 DUT와 정답 메타데이터 (평가용) | 📝 |
-| `reports/` | 회귀 실행 결과 리포트 | 📝 |
+| `dut/` | 평가용 골든 DUT. 지금은 `sync_fifo`(골든 RTL + self-checking TB), UART/SPI/I2C 추가 예정 | ✅ |
+| `bugs/` | 버그 카탈로그와 정답 메타데이터 (`sync_fifo`: 버그 17 + 동등 변형 2) | ✅ |
+| `reports/` | 평가 리포트 (`baseline_sync_fifo.md`). 회귀 리포트는 📝 | 🚧 |
 
 ## 📂 Directory Structure
 
@@ -32,7 +32,10 @@ Agent/
 │   ├── log_parser.py           # xvlog / xelab / xsim 로그 파서, time_to_ps
 │   ├── analyzer.py             # analyze(RunResult) -> SimResult 판정
 │   ├── vcd_reader.py           # 시뮬레이터 무관 VCD 조회 (ID 기준 이력, 에지 샘플링, net 후보)
-│   └── vcd_tools.py            # Agent(LLM)용 VCD 도구 (출력 상한, 오류를 dict로 반환)
+│   ├── vcd_tools.py            # Agent(LLM)용 VCD 도구 (출력 상한, 오류를 dict로 반환)
+│   ├── bugs.py                 # 버그 카탈로그 로드, 패치 적용 (줄 번호와 diff를 정답으로 반환)
+│   ├── evaluator.py            # 골든/변형 일괄 실행, detected/survived/invalid 분류, 집계
+│   └── eval_report.py          # results.json -> Markdown 리포트
 ├── sim/
 │   ├── base.py                 # Simulator 추상 클래스
 │   ├── runner.py               # run_tool(): 도구 한 단계 실행 (타임아웃, 프로세스 트리 종료)
@@ -42,7 +45,9 @@ Agent/
 │       └── run.tcl.tmpl        # VCD 덤프용 Tcl 템플릿
 ├── scripts/
 │   ├── run_once.py             # 한 번 실행하고 단계별 결과와 판정 출력
-│   └── collect_xsim_samples.py # TB 변형 6종으로 xsim 로그 샘플 수집
+│   ├── collect_xsim_samples.py # TB 변형 6종으로 xsim 로그 샘플 수집
+│   ├── run_eval.py             # 골든 + 버그 변형 전체 평가 실행
+│   └── make_baseline_report.py # 평가 결과로 baseline 리포트 생성
 ├── tests/
 │   ├── data/                   # 실제 xsim 로그, VCD 샘플 (README 참고)
 │   ├── test_models.py          #  6
@@ -52,12 +57,26 @@ Agent/
 │   ├── test_analyzer.py        # 13
 │   ├── test_pipeline.py        #  2  (실제 Vivado 실행 → 판정)
 │   ├── test_vcd_reader.py      # 21
-│   └── test_vcd_tools.py       # 10
+│   ├── test_vcd_tools.py       # 10
+│   ├── test_golden_sync_fifo.py #  2  (골든 PASS, 단순 변형 FAIL: 실제 Vivado)
+│   ├── test_bugs.py            #  9
+│   ├── test_evaluator.py       #  7
+│   └── test_eval_report.py     #  2
 ├── docs/
 │   ├── NOTES_p0.md             # Phase 0: 수동 실행
 │   ├── NOTES_ps1.md            # Phase 1: XsimSim 어댑터
 │   ├── NOTES_ps2.md            # Phase 2: 로그 파서와 판정
-│   └── NOTES_ps3.md            # Phase 3: VCD Reader와 Agent용 도구
+│   ├── NOTES_ps3.md            # Phase 3: VCD Reader와 Agent용 도구
+│   └── NOTES_ps4.md            # Phase 4: 골든 DUT, 버그 주입, 평가 하네스
+├── dut/
+│   └── sync_fifo/
+│       ├── rtl/                # 골든 RTL (원본 그대로)
+│       └── tb/                 # tb_sync_fifo_sc.v (self-checking), tb_sync_fifo_ref.v (원본 TB)
+├── bugs/
+│   └── sync_fifo/
+│       └── bugs.json           # 버그 카탈로그 19개
+├── reports/
+│   └── baseline_sync_fifo.md   # TB-only 평가 기준선 (make_baseline_report로 생성)
 ├── Manual_test/                # Phase 0: 수동 실행 검증
 │   ├── dut/                    # async FIFO RTL
 │   ├── tb/                     # 기준 Testbench
@@ -81,9 +100,8 @@ Agent/
 │   ├── analyzer_rtl.py         # RTL Analyzer
 │   ├── tb_generator.py
 │   └── report.py
-├── dut/                        # uart, spi, fifo, i2c
-├── bugs/                       # 버그 주입본 + 정답 메타데이터
-└── reports/
+├── dut/                        # uart, spi, i2c 추가 예정
+└── bugs/                       # 위 DUT용 카탈로그 추가 예정
 ```
 
 ## ⚙️ How the Agent Works
@@ -215,15 +233,27 @@ FAIL일 때만 동작하는 Agent 구간입니다. LLM이 도구를 골라 쓰�
 
 가드레일: 최대 반복 횟수 제한, 원본 파일 쓰기 금지, 도구 출력 길이 제한, TB/RTL 수정 권한 분리.
 
-### 평가 (📝)
+### 평가 하네스 (✅ TB-only 기준선 / 📝 Agent 평가)
 
-DUT별로 버그를 주입한 변형본(`bugs/`)과 정답 메타데이터(위치, 유형)를 만들고 다음 지표를 측정합니다.
+DUT별로 버그를 주입한 변형(`bugs/`)과 정답 메타데이터(파일, 줄, 유형)를 만들어 다음 지표를 측정합니다. 변형 RTL은 파일로 저장하지 않고 카탈로그의 패치를 골든 RTL에 적용해서 만듭니다. 패치 대상이 바뀌면 즉시 에러가 나므로 정답지가 골든과 어긋나지 않습니다.
+
+**실행 규칙**
+
+| 대상 | 결과 | 분류 |
+|---|---|---|
+| 골든 | PASS가 아님 | 평가 중단 (기준선이 깨짐) |
+| 일반 변형 | FAIL | `detected` |
+| 일반 변형 | PASS, NO_VERDICT | `survived` (TB가 못 잡음) |
+| 일반 변형 | COMPILE/ELAB_ERROR, TIMEOUT | `invalid` (점수 제외, 경고) |
+| 동등 변형 | 생존 | `equivalent_ok` (top 기준으로 관측 불가능한 변형, 점수 제외) |
+
+**TB-only 기준선 (sync FIFO, 실제 Vivado)**: 골든 PASS, 실제 버그 17개를 모두 `detected`, 동등 변형 2개는 `equivalent_ok`, **mutation score 100%**, 첫 불일치 시각 27~417 ns, 전체 221초. 변형이 한 줄 치환 단일 버그뿐이라 TB가 완전하다는 뜻은 아니며, 이 기준선은 이후 TB Generator와 Debug Agent 결과와 비교하는 용도입니다 (`docs/NOTES_ps4.md`).
 
 | 지표 | 의미 |
 |---|---|
 | 컴파일 성공률 | LLM이 생성한 TB가 재시도 횟수 내에 컴파일되는 비율 |
 | 골든 PASS율 | 정상 DUT에서 생성된 TB가 PASS하는 비율 (TB 자체의 오류 검출) |
-| 버그 탐지율 | 주입한 버그를 FAIL로 잡아내는 비율 |
+| 버그 탐지율 (mutation score) | 주입한 버그를 FAIL로 잡아내는 비율. TB-only 기준선은 측정 완료 (100%), LLM이 만든 TB는 Phase 6 |
 | 원인 위치 정확도 | Agent가 지목한 파일·줄·신호가 정답과 일치하는 비율 |
 | 평균 반복 횟수 | 원인 분석까지 걸린 Agent 루프 횟수 |
 
@@ -231,8 +261,9 @@ DUT별로 버그를 주입한 변형본(`bugs/`)과 정답 메타데이터(위�
 
 | 구분 | 내용 |
 |---|---|
-| 자동 테스트 | 78개 (`pytest -q`). Vivado가 없으면 실제 실행 테스트 3개, 샘플 VCD가 없으면 샘플 기반 테스트 3개는 건너뜀 |
+| 자동 테스트 | 98개 (`pytest -q`). Vivado가 없으면 실제 실행 테스트 5개, 샘플 VCD가 없으면 샘플 기반 테스트 3개는 건너뜀 |
 | 실제 Vivado 실행 | 정상 / PASS / FAIL / `$error` / `$fatal` / PASS+에러 / 타임아웃 / 컴파일 에러 8종을 실제로 돌려 판정이 모두 기대와 일치 |
+| 평가 하네스 | 골든 1 + 버그 변형 19개를 실제 Vivado로 실행 (221초). 판정 규칙은 가짜 Runner로 Vivado 없이 테스트 |
 | 샘플 데이터 | 손으로 쓴 로그가 아니라 실제 xsim 출력 (`tests/data/README.md`) |
 
 ## 🚀 Quick Start
@@ -254,6 +285,15 @@ python -m scripts.run_once --top async_fifo_tb --label fifo `
 
 실행 결과는 `runs/<시각>_<label>_<id>/` 아래에 `files.f`, `run.tcl`, 각 도구의 로그, `dump.vcd`로 생성됩니다.
 
+```powershell
+# 평가: 골든 + 버그 변형 전체 (약 4분), 결과는 runs/eval_<시각>/results.json
+python -m scripts.run_eval
+python -m scripts.run_eval --only B07 B17        # 일부만
+
+# 리포트 생성 -> reports/baseline_sync_fifo.md
+python -m scripts.make_baseline_report
+```
+
 ## 🗺️ Development Status
 
 | Phase | 내용 | 상태 |
@@ -262,8 +302,8 @@ python -m scripts.run_once --top async_fifo_tb --label fifo `
 | 1 | `XsimSim` 어댑터: 격리 실행, 중단 정책, 타임아웃과 프로세스 트리 종료 (`docs/NOTES_ps1.md`) | ✅ |
 | 2 | 로그 파서와 `SimResult` 판정 (`docs/NOTES_ps2.md`) | ✅ |
 | 3 | VCD Reader (ID 기준 이력, alias, 에지 샘플링, net 후보)와 Agent용 도구 (`docs/NOTES_ps3.md`) | ✅ |
-| 4 | 버그 주입 세트와 평가 하네스 | 🚧 |
-| 5 | RTL Analyzer | 📝 |
+| 4 | 골든 DUT(sync FIFO)와 self-checking TB, 버그 주입 세트, 평가 하네스와 TB-only 기준선 (`docs/NOTES_ps4.md`) | ✅ |
+| 5 | RTL Analyzer | 🚧 |
 | 6 | TB Generator + Compile Gate | 📝 |
 | 7 | Debug Agent Loop | 📝 |
 | 8 | Regression / Report, UART·SPI·I2C로 확장 | 📝 |

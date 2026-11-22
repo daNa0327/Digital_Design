@@ -275,8 +275,8 @@ vcd_path  : None
 Phase 0에서 이어진 항목:
 
 - ⏸ **async FIFO `empty` 계산 비대칭**: 코드상 사실은 확인됨, 오동작은 시뮬 미확인. Agent 완성 후 수정하면서 적용 사례로 문서화 예정.
-- ⏸ **골든 DUT 문제**: 위 DUT는 골든이 될 수 없으므로 Phase 4에서 평가용 골든은 별도 DUT(예: Sync FIFO)로 시작.
-- ⏸ **기준 TB가 self-checking이 아님**: 버그 탐지율 기준선으로 쓸 수 없으며 별도 TB 필요.
+- ✅ **골든 DUT 문제**: 위 DUT는 골든이 될 수 없으므로 Phase 4에서 평가용 골든은 별도 DUT(Sync FIFO)로 시작했다 (`docs/NOTES_ps4.md`).
+- ✅ **기준 TB가 self-checking이 아님**: async FIFO 기준 TB는 여전히 그렇지만, Phase 4에서 sync FIFO용 self-checking TB를 따로 만들어 기준선으로 사용했다.
 
 ## 8. 작업 중 얻은 교훈
 

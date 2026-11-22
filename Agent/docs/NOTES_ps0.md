@@ -179,7 +179,7 @@ FIFO 메모리 내용은 VCD로 볼 수 없다. Debug Agent는 포인터와 `dat
 
 ### 6.3 기준 TB는 self-checking이 아님 ✅
 
-`tb_async_fifo.v`는 출력/비교 로직이 없어 로그에 PASS/FAIL이 남지 않는다. 사람이 파형으로 판단하는 방식이므로 **버그 탐지율 기준선으로 쓸 수 없다.** 기준선용 self-checking TB(scoreboard 포함)는 별도로 작성해야 한다 (Phase 4 이전).
+`tb_async_fifo.v`는 출력/비교 로직이 없어 로그에 PASS/FAIL이 남지 않는다. 사람이 파형으로 판단하는 방식이므로 **버그 탐지율 기준선으로 쓸 수 없다.** 기준선용 self-checking TB(scoreboard 포함)는 별도로 작성해야 한다 (Phase 4 이전). **Phase 4에서 sync FIFO용 self-checking TB를 작성했다** (`dut/sync_fifo/tb/tb_sync_fifo_sc.v`). async FIFO용은 아직 없다.
 
 ### 6.4 VCD 생성 방식 결론 ✅
 
