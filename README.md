@@ -6,15 +6,12 @@
 ## 📂 Directory Structure
 ```text
 Digital_Design/
-├── Agent/
-│   ├── ...
-│   └── README.md
-├── Fundamentals/
-│   ├── ...
-│   └── README.md
-├── Projects/
-│   ├── ...
-│   └── README.md
+├── Agent/          # RTL Verification AI Agent (Python + LLM + Vivado xsim 기반 검증 자동화)
+│   └── ...
+├── Fundamentals/   # 기초 논리회로 및 Verilog HDL 학습 (조합회로, 순차회로 등)
+│   └── ...
+├── Projects/       # 디지털 시스템 설계 프로젝트 (UART, SPI, FIFO, I2C 등)
+│   └── ...
 ├── .gitignore
 └── README.md
 ```

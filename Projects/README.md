@@ -6,28 +6,28 @@ Verilog HDL을 활용하여 설계한 디지털 회로 프로젝트 저장소입
 ## 📂 Directory Structure
 ```text
 Projects/
-├── ALU/
-├── 8-bit_Ripple_Carry_Adder/
-├── Digital_Clock/
-├── Traffic_Light/
-├── UART/
-├── SPI/
-├── FIFO/
-├── I2C/
+├── ALU/                         # 산술 논리 연산 장치 (Arithmetic Logic Unit)
+├── 8-bit_Ripple_Carry_Adder/    # 8비트 리플 캐리 가산기 (Full Adder 8개 연결)
+├── Digital_Clock/               # 디지털 시계 (시/분/초 카운터)
+├── Traffic_Light/               # 신호등 제어기 (FSM 기반)
+├── UART/                        # 직렬 통신 프로토콜 (비동기 TX/RX)
+├── SPI/                         # 직렬 통신 프로토콜 (동기, Master/Slave)
+├── FIFO/                        # FIFO 메모리 (Sync FIFO, Async FIFO)
+├── I2C/                         # 직렬 통신 프로토콜 (2선식, SDA/SCL)
 └── README.md
 
 
 └──Circuit/
-    ├── rtl/
+    ├── rtl/                     # 합성 가능한 RTL 설계 파일
     │   └── Circuit.v
-    ├── tb/
+    ├── tb/                      # Testbench (시뮬레이션 전용)
     │   └── Circuit_tb.v
-    ├── sim/
-    │   ├── sim.out
-    │   ├── sim.png
-    │   ├── wave.vcd
-    │   └── wave.png
-    ├── docs/
-    │   └── Block Diagram, FSM, Schematic.png
-    └── READEME.md
+    ├── sim/                     # 시뮬레이션 결과
+    │   ├── sim.out              # 시뮬레이션 실행 파일 (Icarus Verilog 컴파일 결과)
+    │   ├── sim.png              # 시뮬레이션 로그/결과 캡처
+    │   ├── wave.vcd             # 파형 덤프 파일 (GTKWave로 확인)
+    │   └── wave.png             # 파형 캡처
+    ├── docs/                    # 설계 문서
+    │   └── Block Diagram, FSM, Schematic.png   # 블록 다이어그램, FSM, 회로도
+    └── README.md
 ```

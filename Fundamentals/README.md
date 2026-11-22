@@ -7,20 +7,20 @@
 
 ```text
 Fundamentals/
-├── Encoder_Decoder/
-├── MUX_DEMUX/
-├── Comparator/
-├── Adder/
-├── Subtractor/
-├── Flip_Flop/
-├── Register/
-├── Counter/
+├── Encoder_Decoder/   # 인코더/디코더
+├── MUX_DEMUX/         # 멀티플렉서/디멀티플렉서
+├── Comparator/        # 비교기 (크기 비교)
+├── Adder/             # 가산기 (Half Adder, Full Adder)
+├── Subtractor/        # 감산기 (Half Subtractor, Full Subtractor)
+├── Flip_Flop/         # 플립플롭 (D, JK, T 등 순차회로의 기본 소자)
+├── Register/          # 레지스터 (데이터 저장, Shift Register)
+├── Counter/           # 카운터 (동기/비동기 카운터)
 └── README.md
 
 
 └──Logic Circuit/
-    ├── Logic Circuit.v
-    ├── docs/
-    │   └── Truth Table, Circuit Diagram, Logic Equation.png
+    ├── Logic Circuit.v            # RTL, testbench 파일
+    ├── docs/                      # 직접 작성한 학습 자료
+    │   └── Truth Table, Circuit Diagram, Logic Equation.png   # 진리표, 회로도, 논리식
     └── README.md
 ```
