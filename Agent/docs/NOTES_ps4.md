@@ -181,7 +181,7 @@ ERROR: [XSIM 43-4099] ... Module sync_fifo doesn't have a timescale but at least
 - **파일 이동은 테스트가 가장 먼저 알려 준다.** `dut` 폴더 이름(`sync_fifo.v`)이 어긋나고 Phase 0용 파일이 함께 옮겨져 기존 테스트 5개가 실패했다. 폴더 구조가 바뀌면 `pytest` 개수부터 확인한다.
 - **TB 로그는 파서 규약에 맞춘다.** 마커 한 줄만 `[TB] PASS/FAIL`로 쓰고 상세는 다른 접두로 분리해서 Phase 2 파서와 간섭하지 않게 했다.
 
-## 9. 다음 단계 (Phase 5: RTL Analyzer)
+## 9. 다음 단계 (Phase 5: RTL Analyzer) — ✅ 완료, 결과는 `docs/NOTES_ps5.md`
 
 | 확인된 사실 | 설계 |
 |---|---|

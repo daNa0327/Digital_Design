@@ -11,11 +11,11 @@ RTL을 입력하면 **Testbench 생성 → 시뮬레이션 → 로그 분석 →
 
 | 폴더 | 역할 | 상태 |
 |---|---|---|
-| `core/` | 데이터 모델(`StepResult`, `RunResult`, `ErrorItem`, `SimResult`), 로그 파서, 판정(`analyze`), VCD 읽기(`VcdReader`)와 Agent용 VCD 도구(`VcdTools`), 버그 주입(`bugs.py`), 평가 하네스(`evaluator.py`), 평가 리포트(`eval_report.py`) | ✅ |
+| `core/` | 데이터 모델(`StepResult`, `RunResult`, `ErrorItem`, `SimResult`), 로그 파서, 판정(`analyze`), VCD 읽기(`VcdReader`)와 Agent용 VCD 도구(`VcdTools`), 버그 주입(`bugs.py`), 평가 하네스(`evaluator.py`), 평가 리포트(`eval_report.py`), RTL Analyzer(`rtl_analyzer.py`, `rtl_clkrst.py`, `rtl_summary.py`) | ✅ |
 | `sim/` | 시뮬레이터 실행 계층. `Simulator` 추상 클래스, `XsimSim` 어댑터, 도구 실행기(`run_tool`), 작업 폴더 생성, Tcl 템플릿 | ✅ |
-| `scripts/` | 터미널 CLI (`run_once.py`: 실행 + 판정 출력, `run_eval.py`: 평가 실행, `make_baseline_report.py`: 리포트 생성)와 로그 샘플 수집 도구 | ✅ |
-| `tests/` | 단위·통합 테스트 98개, 그리고 테스트용 실제 xsim 로그·VCD 샘플(`tests/data/`) | ✅ |
-| `docs/` | 단계별 개발 기록 (`NOTES_p0.md` ~ `NOTES_ps4.md`) | ✅ |
+| `scripts/` | 터미널 CLI (`run_once.py`: 실행 + 판정 출력, `run_eval.py`: 평가 실행, `make_baseline_report.py`: 리포트 생성, `show_rtl.py`: RTL 분석 결과 표, `make_rtl_summary.py`: TB Generator 입력 요약)와 로그 샘플 수집 도구 | ✅ |
+| `tests/` | 단위·통합 테스트 183개, 그리고 테스트용 실제 xsim 로그·VCD 샘플(`tests/data/`) | ✅ |
+| `docs/` | 단계별 개발 기록 (`NOTES_p0.md` ~ `NOTES_ps5.md`) | ✅ |
 | `Manual_test/` | 자동화 전에 `xvlog → xelab → xsim` 흐름을 손으로 검증한 기록 (첫 대상 DUT: async FIFO) | ✅ |
 | `runs/` | 실행마다 생성되는 고유 작업 폴더 (Git 추적 제외) | ✅ |
 | `agent/` | LLM 기반 TB Generator, Debug Agent Loop (Tool Use) | 📝 |
@@ -35,7 +35,10 @@ Agent/
 │   ├── vcd_tools.py            # Agent(LLM)용 VCD 도구 (출력 상한, 오류를 dict로 반환)
 │   ├── bugs.py                 # 버그 카탈로그 로드, 패치 적용 (줄 번호와 diff를 정답으로 반환)
 │   ├── evaluator.py            # 골든/변형 일괄 실행, detected/survived/invalid 분류, 집계
-│   └── eval_report.py          # results.json -> Markdown 리포트
+│   ├── eval_report.py          # results.json -> Markdown 리포트
+│   ├── rtl_analyzer.py         # RTL Analyzer: 모듈/포트/파라미터/인스턴스, 계층, top 추정, top 인터페이스
+│   ├── rtl_clkrst.py           # always 블록 기반 클럭/리셋 판별 (근거 evidence 포함)
+│   └── rtl_summary.py          # TB Generator용 요약 dict 생성과 스키마 검증
 ├── sim/
 │   ├── base.py                 # Simulator 추상 클래스
 │   ├── runner.py               # run_tool(): 도구 한 단계 실행 (타임아웃, 프로세스 트리 종료)
@@ -47,7 +50,9 @@ Agent/
 │   ├── run_once.py             # 한 번 실행하고 단계별 결과와 판정 출력
 │   ├── collect_xsim_samples.py # TB 변형 6종으로 xsim 로그 샘플 수집
 │   ├── run_eval.py             # 골든 + 버그 변형 전체 평가 실행
-│   └── make_baseline_report.py # 평가 결과로 baseline 리포트 생성
+│   ├── make_baseline_report.py # 평가 결과로 baseline 리포트 생성
+│   ├── show_rtl.py             # RTL 분석 결과(모듈, 계층, 클럭/리셋) 출력
+│   └── make_rtl_summary.py     # TB Generator 입력용 요약 JSON 생성
 ├── tests/
 │   ├── data/                   # 실제 xsim 로그, VCD 샘플 (README 참고)
 │   ├── test_models.py          #  6
@@ -61,13 +66,18 @@ Agent/
 │   ├── test_golden_sync_fifo.py #  2  (골든 PASS, 단순 변형 FAIL: 실제 Vivado)
 │   ├── test_bugs.py            #  9
 │   ├── test_evaluator.py       #  7
-│   └── test_eval_report.py     #  2
+│   ├── test_eval_report.py     #  2
+│   ├── test_rtl_analyzer.py    # 24
+│   ├── test_rtl_hierarchy.py   # 18
+│   ├── test_rtl_clkrst.py      # 21
+│   └── test_rtl_summary.py     # 22
 ├── docs/
 │   ├── NOTES_p0.md             # Phase 0: 수동 실행
 │   ├── NOTES_ps1.md            # Phase 1: XsimSim 어댑터
 │   ├── NOTES_ps2.md            # Phase 2: 로그 파서와 판정
 │   ├── NOTES_ps3.md            # Phase 3: VCD Reader와 Agent용 도구
-│   └── NOTES_ps4.md            # Phase 4: 골든 DUT, 버그 주입, 평가 하네스
+│   ├── NOTES_ps4.md            # Phase 4: 골든 DUT, 버그 주입, 평가 하네스
+│   └── NOTES_ps5.md            # Phase 5: RTL Analyzer
 ├── dut/
 │   └── sync_fifo/
 │       ├── rtl/                # 골든 RTL (원본 그대로)
@@ -97,7 +107,6 @@ Agent/
 │   ├── tools.py                # LLM에 노출할 Tool 정의
 │   └── prompts/                # TB 생성, 디버깅 프롬프트
 ├── core/
-│   ├── analyzer_rtl.py         # RTL Analyzer
 │   ├── tb_generator.py
 │   └── report.py
 ├── dut/                        # uart, spi, i2c 추가 예정
@@ -111,7 +120,7 @@ Agent/
 ```text
 [RTL 파일]
    ↓
-[1. RTL Analyzer]      포트/파라미터/FSM 추출 (LLM + 정규식)                      📝
+[1. RTL Analyzer]      포트/파라미터/계층/클럭·리셋/timescale 추출 (결정적, LLM 없음) ✅
    ↓
 [2. TB Generator]      LLM이 self-checking TB 생성                               📝
    │                   (TB는 [TB] PASS / [TB] FAIL 출력 규약 강제)
@@ -261,9 +270,10 @@ DUT별로 버그를 주입한 변형(`bugs/`)과 정답 메타데이터(파일, 
 
 | 구분 | 내용 |
 |---|---|
-| 자동 테스트 | 98개 (`pytest -q`). Vivado가 없으면 실제 실행 테스트 5개, 샘플 VCD가 없으면 샘플 기반 테스트 3개는 건너뜀 |
+| 자동 테스트 | 183개 (`pytest -q`). Vivado가 없으면 실제 실행 테스트 5개, 샘플 VCD가 없으면 샘플 기반 테스트 3개는 건너뜀 |
 | 실제 Vivado 실행 | 정상 / PASS / FAIL / `$error` / `$fatal` / PASS+에러 / 타임아웃 / 컴파일 에러 8종을 실제로 돌려 판정이 모두 기대와 일치 |
 | 평가 하네스 | 골든 1 + 버그 변형 19개를 실제 Vivado로 실행 (221초). 판정 규칙은 가짜 Runner로 Vivado 없이 테스트 |
+| RTL Analyzer | sync FIFO(모듈 3개)와 async FIFO(모듈 5개)의 포트 폭, 계층, 클럭/리셋, timescale을 실제 소스에서 추출해 정답과 대조. 요약은 스키마 검증과 TB 생성 차단 조건(`blockers`)을 테스트로 고정 |
 | 샘플 데이터 | 손으로 쓴 로그가 아니라 실제 xsim 출력 (`tests/data/README.md`) |
 
 ## 🚀 Quick Start
@@ -292,6 +302,10 @@ python -m scripts.run_eval --only B07 B17        # 일부만
 
 # 리포트 생성 -> reports/baseline_sync_fifo.md
 python -m scripts.make_baseline_report
+
+# RTL 분석: 모듈/포트/계층/클럭/리셋 표, TB Generator 입력용 JSON 요약
+python -m scripts.show_rtl dut/sync_fifo/rtl
+python -m scripts.make_rtl_summary Manual_test/dut
 ```
 
 ## 🗺️ Development Status
@@ -303,9 +317,23 @@ python -m scripts.make_baseline_report
 | 2 | 로그 파서와 `SimResult` 판정 (`docs/NOTES_ps2.md`) | ✅ |
 | 3 | VCD Reader (ID 기준 이력, alias, 에지 샘플링, net 후보)와 Agent용 도구 (`docs/NOTES_ps3.md`) | ✅ |
 | 4 | 골든 DUT(sync FIFO)와 self-checking TB, 버그 주입 세트, 평가 하네스와 TB-only 기준선 (`docs/NOTES_ps4.md`) | ✅ |
-| 5 | RTL Analyzer | 🚧 |
-| 6 | TB Generator + Compile Gate | 📝 |
+| 5 | RTL Analyzer: 모듈/포트/파라미터/계층/top 추정, 클럭·리셋 판별, timescale 상태, TB Generator용 요약 JSON과 검증 (`docs/NOTES_ps5.md`) | ✅ |
+| 6 | TB Generator + Compile Gate | 🚧 |
 | 7 | Debug Agent Loop | 📝 |
 | 8 | Regression / Report, UART·SPI·I2C로 확장 | 📝 |
+
+### 버전 로드맵
+
+위 Phase는 **v1**을 만드는 단계이고, 이후는 버전 단위로 확장합니다. 각 버전은 그 자체로 완성품이 되도록 범위를 나눕니다.
+
+| 버전 | 범위 | 완료 기준 (측정 지표) |
+|---|---|---|
+| RVA v1 | Verilog RTL 기능 검증 자동화 (Phase 0~8) | 평가 세트에서 골든 PASS율, mutation score, 원인 위치 정확도 측정 |
+| RVA v1.5 | v1 최적화 (프롬프트, 재시도 정책, 비용과 시간 절감) | v1과 같은 지표가 개선됨을 수치로 확인 |
+| RVA v2 | SystemVerilog + UVM (SVA, 커버리지, 제약 랜덤, UVM 환경 생성) | 같은 DUT에서 v1 대비 검출력과 커버리지 비교 |
+| RVA v2.5 | v2 최적화 | v2와 같은 지표 개선 확인 |
+| RVA v3 | PPA 분석 (합성 리포트 파싱: timing, power, area 요약. 수치는 파서, LLM은 요약만) | 합성 리포트에서 추출한 값과 원본의 일치 검증 |
+
+버전 사이의 최적화는 "막연한 개선"이 아니라 위 지표의 목표값을 먼저 정하고 달성 여부로 마무리합니다.
 
 이후 SystemVerilog / UVM 기반 검증으로 확장할 계획입니다.
