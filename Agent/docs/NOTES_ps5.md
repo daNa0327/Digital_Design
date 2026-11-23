@@ -148,6 +148,8 @@ sync FIFO는 timescale이 없고 async FIFO는 `1ns/1ps`다. Phase 4에서 XSIM 
 
 ## 7. 다음 단계 (Phase 6: TB Generator + Compile Gate)
 
+> Phase 6은 완료되었다. 결과는 `docs/NOTES_ps6.md`에 있다.
+
 | 확인된 사실 | 설계 |
 |---|---|
 | 요약 JSON에 TB 생성에 필요한 정보가 모여 있음 (`inputs_to_drive`, `outputs_to_observe`, 클럭, 리셋, `tb_directive`) | 이 요약만 LLM 프롬프트에 넣고, DUT 소스는 필요한 경우에만 첨부 |
