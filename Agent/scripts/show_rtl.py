@@ -11,7 +11,7 @@ import json
 import sys
 from pathlib import Path
 
-from core.rtl_analyzer import parse_files
+from core.rtl_analyzer import build_hierarchy, parse_files, render_tree
 
 
 def _collect(args: list[str]) -> list[Path]:
@@ -36,8 +36,10 @@ def main(argv=None) -> int:
         print("Verilog 파일(.v/.sv)을 찾지 못했습니다.", file=sys.stderr)
         return 2
     mods = parse_files(files)
+    h = build_hierarchy(mods)
     if a.json:
-        print(json.dumps([m.to_dict() for m in mods], ensure_ascii=False, indent=2))
+        print(json.dumps({"modules": [m.to_dict() for m in mods], "hierarchy": h.to_dict()},
+                         ensure_ascii=False, indent=2))
         return 0
 
     for m in mods:
@@ -51,8 +53,26 @@ def main(argv=None) -> int:
             rng = f"[{p.range_expr}]" if p.range_expr else ""
             reg = " reg" if p.is_reg else ""
             print(f"  {p.direction:<6}{reg:<4} {rng:<10} {p.name:<12} width={w}  (line {p.line})")
+        for i in m.instances:
+            conns = len(i.connections)
+            ov = f" #({', '.join(f'{k}={v}' for k, v in i.param_overrides.items())})" if i.param_overrides else ""
+            print(f"  inst   {i.name}: {i.module}{ov}  ({conns} connections, line {i.line})")
         for w in m.warnings:
             print(f"  WARN: {w}")
+
+    print("\n== hierarchy ==")
+    print(f"top 후보: {h.top_candidates or '없음'}   best_top: {h.best_top}   testbench 추정: {h.testbench_like or '없음'}")
+    tree = render_tree(h)
+    if tree:
+        print(tree)
+    for w in h.warnings:
+        print(f"WARN: {w}")
+    bad = [i for i in h.issues if i["kind"] != "unconnected"]
+    unconnected = [i for i in h.issues if i["kind"] == "unconnected"]
+    for i in bad:
+        print(f"ISSUE: {i['parent']}.{i['instance']} ({i['module']}): {i['kind']} {i['port']}")
+    for i in unconnected:
+        print(f"NOTE: {i['parent']}.{i['instance']} ({i['module']}): 연결되지 않은 포트 {i['port']}")
     print(f"\n모듈 {len(mods)}개, 파일 {len(files)}개")
     return 0
 
