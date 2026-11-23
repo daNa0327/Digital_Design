@@ -5,6 +5,7 @@ LLM을 쓰지 않는 경량 파서다 (주석 제거 -> 모듈 분리 -> 헤더 
 `warnings`에 남긴다. (`core/analyzer.py`는 시뮬레이션 로그 판정용이라 이름이 다르다.)
 
 5-2: 모듈 인스턴스와 계층(Hierarchy), top 모듈 추정, 포트 연결 점검.
+5-3: 클럭/리셋 판별 (`core/rtl_clkrst.py`), timescale 유무, top 인터페이스 요약.
 
 공개 API:
     strip_comments(text) -> str            # 길이와 줄바꿈 보존 (오프셋/줄 번호 유지)
@@ -12,6 +13,7 @@ LLM을 쓰지 않는 경량 파서다 (주석 제거 -> 모듈 분리 -> 헤더 
     parse_files(paths) -> list[Module]
     build_hierarchy(modules) -> Hierarchy  # top 후보, 자식 관계, 연결 점검
     render_tree(hierarchy, top=None) -> str
+    top_interface(hierarchy, top=None) -> dict   # top 포트 기준 클럭/리셋/timescale 요약
 """
 
 from __future__ import annotations
@@ -21,6 +23,8 @@ import operator
 import re
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
+
+from core.rtl_clkrst import ClockSig, ResetSig, extract_clk_rst  # noqa: E402
 
 DIRECTIONS = ("input", "output", "inout")
 NET_TYPES = ("wire", "reg", "logic", "tri")
@@ -73,6 +77,9 @@ class Module:
     ports: list[Port] = field(default_factory=list)
     params: list[Param] = field(default_factory=list)
     instances: list[Instance] = field(default_factory=list)
+    clocks: list[ClockSig] = field(default_factory=list)
+    resets: list[ResetSig] = field(default_factory=list)
+    timescale: str | None = None    # 모듈 앞에서 마지막으로 선언된 `timescale (같은 파일 안), 없으면 None
     warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -291,6 +298,7 @@ def _parse_ports(chunk: str, base_offset: int, text: str, env: dict[str, int],
 
 
 # ---------------------------------------------------------------- 모듈
+_TIMESCALE = re.compile(r"`timescale\s+(\d+\s*[a-zA-Z]+)\s*/\s*(\d+\s*[a-zA-Z]+)")
 _MODULE_START = re.compile(r"\b(?:module|macromodule)\s+([A-Za-z_]\w*)")
 _BODY_PARAM = re.compile(r"\b(parameter|localparam)\b([^;]*);")
 
@@ -357,6 +365,11 @@ def parse_modules(text: str, path: str = "") -> list[Module]:
             mod.warnings.append("generate 블록은 해석하지 않음")
 
         mod.instances = _parse_instances(body, i, clean, mod.warnings)
+        mod.clocks, mod.resets = extract_clk_rst(clean, i, body_end, {p.name for p in mod.ports}, mod.warnings)
+        ts = _TIMESCALE.findall(clean[:m.start()])
+        if ts:
+            unit, prec = (re.sub(r"\s+", "", t) for t in ts[-1])
+            mod.timescale = f"{unit}/{prec}"
 
         modules.append(mod)
         pos = body_end + len("endmodule") if end >= 0 else len(clean)
@@ -498,9 +511,13 @@ class Hierarchy:
     unresolved: list[tuple[str, str, str]]           # (부모, 인스턴스 이름, 알 수 없는 타입)
     issues: list[dict]                               # 연결 점검: unknown_port | unconnected | too_many_positional
     warnings: list[str]
+    timescale_status: str = "none"                   # none | all | mixed (top에서 도달하는 모듈 기준)
+    timescale_by_module: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
+            "timescale_status": self.timescale_status,
+            "timescale_by_module": self.timescale_by_module,
             "top_candidates": self.top_candidates,
             "testbench_like": self.testbench_like,
             "best_top": self.best_top,
@@ -560,8 +577,34 @@ def build_hierarchy(modules: list[Module]) -> Hierarchy:
     for parent, iname, typ in unresolved:
         warnings.append(f"{parent}.{iname}: 모듈 '{typ}' 정의를 찾지 못함 (라이브러리/IP/프리미티브?)")
 
+    # timescale: 설계(top에서 도달하는 모듈, top이 없으면 testbench 제외 전체) 기준으로 일관성 점검
+    closure = _reachable(children, best) if best else [n for n in by_name if n not in tb_like]
+    ts_by_module = {n: by_name[n].timescale for n in closure}
+    present = [v is not None for v in ts_by_module.values()]
+    if not present or not any(present):
+        status = "none"
+    elif all(present):
+        status = "all"
+    else:
+        status = "mixed"
+        missing = [n for n, v in ts_by_module.items() if v is None]
+        warnings.append(f"`timescale이 일부 모듈에만 있음 (없는 모듈: {missing}) - xelab XSIM 43-4099 위험")
+
     return Hierarchy(modules=by_name, top_candidates=tops, testbench_like=tb_like, best_top=best,
-                     children=children, unresolved=unresolved, issues=issues, warnings=warnings)
+                     children=children, unresolved=unresolved, issues=issues, warnings=warnings,
+                     timescale_status=status, timescale_by_module=ts_by_module)
+
+
+def _reachable(children: dict[str, list[str]], top: str) -> list[str]:
+    seen: list[str] = []
+    stack = [top]
+    while stack:
+        n = stack.pop(0)
+        if n in seen:
+            continue
+        seen.append(n)
+        stack += children.get(n, [])
+    return seen
 
 
 def _check_connections(parent: Module, inst: Instance, child: Module, issues: list[dict]) -> None:
@@ -631,3 +674,58 @@ def render_tree(h: Hierarchy, top: str | None = None) -> str:
         if r in h.modules:
             walk(r, "", r, ())
     return "\n".join(lines)
+
+
+def top_interface(h: Hierarchy, top: str | None = None) -> dict | None:
+    """top 모듈의 포트 기준으로 클럭, 리셋, timescale을 요약한다.
+
+    top 자체에 always가 없어도 자식 모듈의 클럭/리셋이 `.port(top_port)`로 연결돼 있으면 전파한다.
+    내부에서 만든 신호(포트가 아닌 것)는 포함하지 않는다.
+    """
+    top = top or h.best_top
+    if top is None or top not in h.modules:
+        return None
+    memo: dict[str, tuple[dict, dict]] = {}
+
+    def sigs(name: str, stack: tuple[str, ...]):
+        if name in memo:
+            return memo[name]
+        mod = h.modules[name]
+        ports = {p.name for p in mod.ports}
+        clocks: dict[str, set[str]] = {}
+        resets: dict[str, tuple] = {}
+        for c in mod.clocks:
+            if c.name in ports:
+                clocks.setdefault(c.name, set()).add(c.edge)
+        for r in mod.resets:
+            if r.name in ports:
+                resets[r.name] = (r.active_high, r.asynchronous, r.evidence)
+        if name in stack:
+            return clocks, resets
+        for inst in mod.instances:
+            child = h.modules.get(inst.module)
+            if child is None:
+                continue
+            cc, cr = sigs(inst.module, stack + (name,))
+            child_ports = [p.name for p in child.ports]
+            for idx, conn in enumerate(inst.connections):
+                cport = conn.port if not conn.positional else (child_ports[idx] if idx < len(child_ports) else None)
+                expr = conn.expr.strip()
+                if cport is None or expr not in ports or not re.fullmatch(r"[A-Za-z_]\w*", expr):
+                    continue
+                if cport in cc:
+                    clocks.setdefault(expr, set()).update(cc[cport])
+                if cport in cr and expr not in resets:
+                    resets[expr] = cr[cport]
+        memo[name] = (clocks, resets)
+        return memo[name]
+
+    clocks, resets = sigs(top, ())
+    return {
+        "top": top,
+        "clocks": [{"port": p, "edges": sorted(e)} for p, e in sorted(clocks.items())],
+        "resets": [{"port": p, "active_high": v[0], "asynchronous": v[1], "evidence": v[2]}
+                   for p, v in sorted(resets.items())],
+        "multi_clock": len(clocks) > 1,
+        "timescale": h.timescale_status,
+    }

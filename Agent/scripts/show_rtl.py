@@ -11,7 +11,7 @@ import json
 import sys
 from pathlib import Path
 
-from core.rtl_analyzer import build_hierarchy, parse_files, render_tree
+from core.rtl_analyzer import build_hierarchy, parse_files, render_tree, top_interface
 
 
 def _collect(args: list[str]) -> list[Path]:
@@ -38,7 +38,8 @@ def main(argv=None) -> int:
     mods = parse_files(files)
     h = build_hierarchy(mods)
     if a.json:
-        print(json.dumps({"modules": [m.to_dict() for m in mods], "hierarchy": h.to_dict()},
+        print(json.dumps({"modules": [m.to_dict() for m in mods], "hierarchy": h.to_dict(),
+                          "top_interface": top_interface(h)},
                          ensure_ascii=False, indent=2))
         return 0
 
@@ -57,6 +58,12 @@ def main(argv=None) -> int:
             conns = len(i.connections)
             ov = f" #({', '.join(f'{k}={v}' for k, v in i.param_overrides.items())})" if i.param_overrides else ""
             print(f"  inst   {i.name}: {i.module}{ov}  ({conns} connections, line {i.line})")
+        for c in m.clocks:
+            print(f"  clock  {c.name} ({c.edge}) x{c.uses}")
+        for r in m.resets:
+            pol = {True: "active-high", False: "active-low", None: "polarity?"}[r.active_high]
+            print(f"  reset  {r.name} {pol} {'async' if r.asynchronous else 'sync'} [{r.evidence}] x{r.uses}")
+        print(f"  timescale: {m.timescale or '없음'}")
         for w in m.warnings:
             print(f"  WARN: {w}")
 
@@ -67,6 +74,16 @@ def main(argv=None) -> int:
         print(tree)
     for w in h.warnings:
         print(f"WARN: {w}")
+    print(f"timescale(설계 기준): {h.timescale_status}")
+    ti = top_interface(h)
+    if ti:
+        print(f"\n== top interface ({ti['top']}) ==")
+        for c in ti["clocks"]:
+            print(f"clock  {c['port']} ({'/'.join(c['edges'])})")
+        for r in ti["resets"]:
+            pol = {True: "active-high", False: "active-low", None: "polarity?"}[r["active_high"]]
+            print(f"reset  {r['port']} {pol} {'async' if r['asynchronous'] else 'sync'} [{r['evidence']}]")
+        print(f"multi_clock: {ti['multi_clock']}")
     bad = [i for i in h.issues if i["kind"] != "unconnected"]
     unconnected = [i for i in h.issues if i["kind"] == "unconnected"]
     for i in bad:
