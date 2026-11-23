@@ -45,13 +45,8 @@ def _is_stop(finish_reason: str | None) -> bool:
     return finish_reason is None or str(finish_reason).upper().split(".")[-1] == "STOP"
 
 
-def generate_tb(summary: dict, sources: dict[str, str], client, spec_text: str | None = None,
-                model: str | None = None, temperature: float = 0.0,
-                max_output_tokens: int = 8192) -> TBResult:
-    """프롬프트를 만들고 LLM을 한 번 부른 뒤 TB를 검사한다. 프롬프트를 못 만들면 TBPromptError."""
-    system, prompt = build_tb_prompt(summary, sources, spec_text)
-    resp = client.generate(LLMRequest(prompt=prompt, system=system, model=model, temperature=temperature,
-                                      max_output_tokens=max_output_tokens))
+def result_from_response(summary: dict, resp, system: str, prompt: str) -> TBResult:
+    """LLM 응답을 코드로 추출하고 정적 검사해 TBResult로 만든다 (최초 생성과 수리 재생성이 공유)."""
     code, notes = extract_verilog(resp.text)
     issues = check_tb(code, summary) if code else [Issue("error", "no_code", "응답에서 TB 코드를 찾지 못함")]
     if not _is_stop(resp.finish_reason):
@@ -62,6 +57,16 @@ def generate_tb(summary: dict, sources: dict[str, str], client, spec_text: str |
         model=resp.model, prompt_sha=hashlib.sha256((system + "\n" + prompt).encode()).hexdigest()[:12],
         input_tokens=resp.input_tokens, output_tokens=resp.output_tokens, cached=resp.cached,
         finish_reason=resp.finish_reason, extract_notes=notes)
+
+
+def generate_tb(summary: dict, sources: dict[str, str], client, spec_text: str | None = None,
+                model: str | None = None, temperature: float = 0.0,
+                max_output_tokens: int = 8192) -> TBResult:
+    """프롬프트를 만들고 LLM을 한 번 부른 뒤 TB를 검사한다. 프롬프트를 못 만들면 TBPromptError."""
+    system, prompt = build_tb_prompt(summary, sources, spec_text)
+    resp = client.generate(LLMRequest(prompt=prompt, system=system, model=model, temperature=temperature,
+                                      max_output_tokens=max_output_tokens))
+    return result_from_response(summary, resp, system, prompt)
 
 
 def render_tb_file(result: TBResult) -> str:
