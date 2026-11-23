@@ -44,6 +44,7 @@ module tb_counter;
   always @(posedge ck or posedge reset) if (reset) m <= 0; else if (en) m <= m + 1;
 {CHECK_BLOCK}
   initial begin
+    $timeformat(-9, 0, " ns", 0);
     ck = 0; reset = 0; en = 0; checks = 0; errors = 0; seed = 1;
     @(negedge ck) reset = 1;
     @(negedge ck) reset = 0;
@@ -321,6 +322,32 @@ def test_missing_optional_logs_are_warnings(summary):
     iss = check_tb(tb, summary)
     assert {"no_check_fail_log", "no_checks_summary", "no_random"} <= codes(iss, "warning")
     assert not has_errors(iss)
+
+
+def test_signed_random_modulo_comparison_is_a_warning(summary):
+    """`($random(seed) % 10) < 8`은 음수 나머지 때문에 확률이 의도(80%)보다 높아지므로(실측 90%) 경고한다."""
+    tb = GOOD_TB.replace("en = $random(seed);", "en = ($random(seed) % 10) < 8;")
+    iss = check_tb(tb, summary)
+    assert "signed_random_modulo" in codes(iss, "warning") and not has_errors(iss)
+
+
+def test_unsigned_random_modulo_has_no_warning(summary):
+    """중괄호로 부호 없는 값을 만든 `({$random(seed)} % 10) < 8`은 경고하지 않는다 (직접 쓴 TB의 방식)."""
+    tb = GOOD_TB.replace("en = $random(seed);", "en = ({$random(seed)} % 10) < 8;")
+    assert "signed_random_modulo" not in codes(check_tb(tb, summary))
+
+
+def test_missing_timeformat_is_a_warning(summary):
+    """CHECK_FAIL이 %0t를 쓰는데 $timeformat이 없으면 경고 (하네스가 첫 불일치 시각을 못 읽음, 점수와는 무관)."""
+    tb = GOOD_TB.replace('    $timeformat(-9, 0, " ns", 0);\n', "")
+    iss = check_tb(tb, summary)
+    assert "no_timeformat" in codes(iss, "warning") and not has_errors(iss)
+
+
+def test_no_timeformat_warning_when_check_fail_has_no_time(summary):
+    """CHECK_FAIL에 시각 출력이 없으면 $timeformat이 없어도 이 경고는 내지 않는다."""
+    tb = GOOD_TB.replace('    $timeformat(-9, 0, " ns", 0);\n', "").replace("t=%0t ", "")
+    assert "no_timeformat" not in codes(check_tb(tb, summary))
 
 
 # ------------------------------------------------------------ 실제 파일로 현실 확인

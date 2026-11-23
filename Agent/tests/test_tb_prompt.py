@@ -110,6 +110,28 @@ def test_contract_has_log_protocol_and_dut_name(tmp_path):
         assert text in p
 
 
+def test_contract_requires_timeformat_so_times_are_readable(tmp_path):
+    """규약이 $timeformat 호출을 요구한다 (없으면 CHECK_FAIL 시각에 단위가 없어 하네스가 읽지 못함)."""
+    s, src = make(tmp_path)
+    assert '$timeformat(-9, 0, " ns", 0);' in build_tb_prompt(s, src)[1]
+
+
+def test_contract_tells_not_to_compare_outputs_that_are_undefined(tmp_path):
+    """계약이 '정의되지 않은 출력(예: 첫 read 전의 메모리 출력)은 valid 플래그로 막고 기대값을 추측으로 초기화하지 말라'고 한다.
+    (LLM TB가 기대값을 0으로 초기화해 DUT의 X와 비교하다 골든에서 FAIL한 실제 사례)"""
+    s, src = make(tmp_path)
+    p = build_tb_prompt(s, src)[1]
+    assert "undefined until some event" in p and "`valid` flag" in p and "`X !== 0` is a mismatch" in p
+
+
+def test_contract_warns_about_signed_random_and_unnamed_block_declarations(tmp_path):
+    """계약이 부호 있는 $random 나머지(확률 왜곡)와 이름 없는 블록 안의 선언(xvlog 거부)을 명시적으로 금지한다."""
+    s, src = make(tmp_path)
+    p = build_tb_prompt(s, src)[1]
+    assert "`$random` is SIGNED" in p and "({$random(seed)} % 10) < 8" in p
+    assert "never declare variables inside an unnamed begin/end block" in p
+
+
 def test_reset_rule_describes_polarity_and_kind(tmp_path):
     """리셋 규칙에 극성과 비동기 여부가 파서 값대로 서술된다."""
     s, src = make(tmp_path)

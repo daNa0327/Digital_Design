@@ -107,7 +107,8 @@ def _contract(summary: dict) -> str:
 OUTPUT CONTRACT (all items are mandatory)
 1. Reply with exactly ONE fenced code block (```verilog ... ```) and nothing else outside it.
 2. The block holds ONE module named `{tb}` with no ports. Verilog-2001 only: no `logic`, `always_ff`, `int`, `bit`, \
-classes, `$urandom`, assertions or any other SystemVerilog.
+classes, `$urandom`, assertions or any other SystemVerilog. \
+Declare every reg/integer/wire at module level; never declare variables inside an unnamed begin/end block (xvlog rejects it).
 3. Instantiate the DUT as `{top} dut (...)` with named port connections `.port(signal)` covering EVERY port, \
 using TB signals named exactly like the ports.
 4. Timescale: {_timescale_rule(summary)}
@@ -118,8 +119,13 @@ using TB signals named exactly like the ports.
 (2 time units) after the active clock edge, before the next input change. Never drive inputs on the sampling edge.
 7. Self-checking: write a behavioral reference model from the SPEC, driven by the same inputs, and compare ONLY the DUT's \
 top-level ports with `!==` (so X and Z are mismatches). Do not read DUT internal signals. \
+EXCEPTION: if the SPEC or the DUT source shows that an output is undefined until some event (for example a memory output \
+register with no reset or initial value, before its first read), do not compare it until then: keep a `valid` flag in the \
+reference model and never initialise the expected value to a guess (an uninitialised DUT output is X, and `X !== 0` is a mismatch). \
 Enable comparisons only after the first reset has finished.
 8. Log protocol (parsed by scripts, keep the exact text):
+   - call `$timeformat(-9, 0, " ns", 0);` once at the start of simulation, so that `%0t` prints with a unit (e.g. `37 ns`); \
+the scripts cannot read a time without a unit
    - for each mismatch, at most 10 times: `$display("CHECK_FAIL t=%0t sig=<port name> exp=%0h got=%0h", $time, exp, got);`
    - once at the end: `$display("CHECKS total=%0d mismatches=%0d", checks, errors);` where `checks` counts clock cycles compared
    - then exactly one of `$display("[TB] PASS");` (errors == 0) or `$display("[TB] FAIL: %0d mismatches", errors);`
@@ -127,7 +133,8 @@ Enable comparisons only after the first reset has finished.
 9. Always finish with `$finish`. Add a watchdog near the top: `initial begin #<generous limit>; \
 $display("[TB] FAIL: timeout"); $finish; end`.
 10. Forbidden: `$stop`, `$fatal`, `$error`, `$dumpfile`, `$dumpvars` (waveforms are recorded by the flow), file I/O, `force`/`release`.
-11. Stimulus must be deterministic: fixed seed, `$random(seed)` only.
+11. Stimulus must be deterministic: fixed seed, `$random(seed)` only. `$random` is SIGNED, so `$random(seed) % 10` can be negative \
+and `($random(seed) % 10) < 8` is true far more often than 80%. Build probabilities from an unsigned value: `({{$random(seed)}} % 10) < 8`.
 12. Stimulus plan (cover each that applies to this DUT): reset behaviour; every boundary condition named in the SPEC; \
 back-to-back operations; simultaneous opposite operations at each boundary; reset while the DUT holds state and recovery after it; \
 a long constrained-random phase (a few thousand cycles) split into phases with different input probabilities; \

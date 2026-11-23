@@ -243,8 +243,14 @@ def check_tb(code: str, summary: dict) -> list[Issue]:
     # --- 참고용 로그 규약 (없어도 평가는 되지만 리포트에서 시각과 신호를 못 씀)
     if not any(s.startswith("CHECK_FAIL") for s in lits):
         W("no_check_fail_log", "CHECK_FAIL 로그가 없음 - 실패 시각과 신호가 리포트에 안 나옴")
+    if any(s.startswith("CHECK_FAIL") and "%0t" in s for s in lits) and not re.search(r"\$timeformat\b", src):
+        W("no_timeformat", "CHECK_FAIL의 %0t에 단위가 붙지 않음 - $timeformat(-9, 0, \" ns\", 0)이 없으면 "
+                           "첫 불일치 시각을 읽지 못함 (점수에는 영향 없음)")
     if not any(s.startswith("CHECKS total=") for s in lits):
         W("no_checks_summary", "`CHECKS total=... mismatches=...` 요약이 없음")
+    if re.search(r"\$random\s*\(\s*\w*\s*\)\s*%\s*\d+\s*\)\s*(?:<=|>=|<|>)", src):
+        W("signed_random_modulo", "`($random(seed) % N) < K` 꼴: $random이 부호 있는 값이라 나머지가 음수가 되어 "
+                                  "확률이 의도보다 훨씬 높아짐 - `({$random(seed)} % N) < K`로 쓰세요")
     if not re.search(r"\$random\b", src):
         W("no_random", "랜덤 자극이 없음 ($random(seed)) - 방향성 시나리오만으로는 경계 조합을 놓칠 수 있음")
     return issues
