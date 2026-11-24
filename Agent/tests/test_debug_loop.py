@@ -223,3 +223,144 @@ def test_semantic_problems_단독(ws):
     assert semantic_problems(ok, ws, set()) == []
     assert semantic_problems({**ok, "location": {"file": "rtl/a.v", "line": 11}}, ws, set())
     assert semantic_problems({**ok, "fix_proposal_ids": [1]}, ws, set())
+
+
+# ---------------------------------------------------------------------------------------------
+# finish_reason 기록 (실측 1차: 빈 응답과 잘린 JSON의 원인을 가리기 위함)
+# ---------------------------------------------------------------------------------------------
+def test_finish_reason이_단계마다_기록된다(ws):
+    """응답이 어떤 이유로 끝났는지(STOP, MAX_TOKENS 등)를 단계 기록에 남긴다."""
+    r, _ = run(ws, [(tool("read_rtl", file="rtl/a.v"), "STOP"), (final(evidence=[{"step": 1, "observation": "o"}]), "STOP")])
+    assert [s.finish_reason for s in r.steps] == ["STOP", "STOP"]
+
+
+def test_잘린_응답의_형식_오류_안내에_finish_reason이_표시된다(ws):
+    """MAX_TOKENS로 잘려 JSON이 깨진 응답은 형식 오류로 처리하되, 기록에 원인(finish_reason)을 남긴다.
+    STOP인 형식 오류에는 붙이지 않는다."""
+    cut = '{"action": "final", "report": {"verdict": "rtl_bug", '
+    r, _ = run(ws, [(cut, "MAX_TOKENS"), ("그냥 문장", "STOP"), (tool("read_rtl", file="rtl/a.v"), "STOP"),
+                    final(evidence=[{"step": 3, "observation": "o"}])], max_steps=6)
+    assert r.steps[0].kind == "format_error" and "finish_reason=MAX_TOKENS" in r.steps[0].note
+    assert r.steps[1].kind == "format_error" and "finish_reason" not in r.steps[1].note
+    assert r.steps[0].finish_reason == "MAX_TOKENS" and r.status == "final"
+
+
+def test_finish_reason은_to_dict에_저장된다(ws):
+    """사후 분석을 위해 결과 JSON의 steps에 finish_reason이 들어간다."""
+    r, _ = run(ws, [(tool("read_rtl", file="rtl/a.v"), "MAX_TOKENS"), final(evidence=[{"step": 1, "observation": "o"}])])
+    d = json.loads(json.dumps(r.to_dict()))
+    assert d["steps"][0]["finish_reason"] == "MAX_TOKENS"
+
+
+# ---------------------------------------------------------------------------------------------
+# 사후 분석을 위한 기록: 처음 받은 메시지와 프롬프트 버전 (B15 분석 중 확인된 공백)
+# ---------------------------------------------------------------------------------------------
+def test_처음_받은_메시지와_프롬프트_해시가_결과에_남는다(ws):
+    """Agent가 처음에 무엇을 알았는지(첫 실패 로그 등)를 나중에 볼 수 있어야 한다. 이전에는 대화에서 빠져 있었다."""
+    r, _ = run(ws, [tool("read_rtl", file="rtl/a.v"), final(evidence=[{"step": 1, "observation": "o"}])])
+    d = json.loads(json.dumps(r.to_dict()))
+    assert "# Failure report" in d["initial_message"] and "sig=count" in d["initial_message"]
+    assert len(d["prompt_sha"]) == 12 and int(d["prompt_sha"], 16) >= 0
+
+
+def test_프롬프트_해시는_같은_조건이면_같고_도구_명세가_바뀌면_달라진다(ws):
+    """같은 시스템 프롬프트는 같은 해시, VCD 도구가 추가되면 다른 해시 (결과가 어떤 프롬프트의 것인지 구분)."""
+    class FakeVcd:
+        pass
+
+    r1, _ = run(ws, [final(evidence=[])])
+    r2, _ = run(DebugWorkspace({"rtl/a.v": RTL}, {"tb/t.v": "x\n"}, LOG), [final(evidence=[])])
+    r3, _ = run(DebugWorkspace({"rtl/a.v": RTL}, {"tb/t.v": "x\n"}, LOG, vcd=FakeVcd()), [final(evidence=[])])
+    assert r1.prompt_sha == r2.prompt_sha != r3.prompt_sha
+
+
+# ---------------------------------------------------------------------------------------------
+# 빈 응답 재시도 (v0b: 22건의 비STOP 응답 전부 MALFORMED_FUNCTION_CALL, 그중 일부는 빈 응답이라 B10은 추론 없이 끝났다)
+# ---------------------------------------------------------------------------------------------
+EMPTY = ("", "MALFORMED_FUNCTION_CALL")
+
+
+def test_빈_응답은_같은_요청을_다시_보내고_단계로_세지_않는다(ws):
+    """첫 응답이 비면 같은 프롬프트를 한 번 더 보낸다. 정상 응답을 받으면 형식 오류도, 단계 소모도 없다."""
+    r, fake = run(ws, [EMPTY, tool("read_rtl", file="rtl/a.v"), final()])
+    assert r.status == "final" and r.format_errors == 0 and r.n_steps == 2
+    assert r.empty_retries == 1 and r.llm_calls == 3                  # 재시도도 호출 수에는 들어간다
+    assert fake.calls[0].prompt == fake.calls[1].prompt               # 같은 요청 (모델이 이전 실패를 보지 않는다)
+    assert "FORMAT ERROR" not in fake.calls[1].prompt and "FORMAT ERROR" not in fake.calls[2].prompt
+    s = r.steps[0]
+    assert (s.kind, s.retries, s.retry_reasons) == ("tool", 1, ["MALFORMED_FUNCTION_CALL"])
+    assert r.steps[1].retries == 0
+
+
+def test_재시도해도_비면_형식_오류로_처리하고_계속한다(ws):
+    """두 번 다 비면 기존처럼 형식 오류 한 단계로 기록하고 오류 메시지를 되먹인다. 재시도 횟수는 그 단계에 남는다."""
+    r, fake = run(ws, [EMPTY, EMPTY, tool("read_rtl", file="rtl/a.v"),
+                       final(evidence=[{"step": 2, "observation": "saw it"}])])     # 1단계는 형식 오류라 근거가 될 수 없다
+    assert r.status == "final" and r.format_errors == 1 and r.n_steps == 3
+    assert [s.kind for s in r.steps] == ["format_error", "tool", "final"]
+    assert r.steps[0].retries == 1 and "비어 있다" in r.steps[0].note
+    assert r.empty_retries == 1 and r.llm_calls == 4
+    assert "FORMAT ERROR" in fake.calls[2].prompt
+
+
+def test_empty_retries가_0이면_재시도하지_않는다(ws):
+    """옵션으로 끌 수 있다. 빈 응답이 곧바로 형식 오류가 된다 (v0b와 같은 동작)."""
+    r, fake = run(ws, [EMPTY, tool("read_rtl", file="rtl/a.v"), final(evidence=[{"step": 2, "observation": "o"}])],
+                  empty_retries=0)
+    assert r.status == "final" and r.format_errors == 1 and r.empty_retries == 0 and r.llm_calls == 3 and r.n_steps == 3
+    assert r.steps[0].retries == 0
+
+
+def test_빈_응답이_계속되면_재시도해도_연속_형식_오류_한도로_끝난다(ws):
+    """B10처럼 계속 비는 경우: 단계마다 재시도 1번씩 하고, 3단계 연속 실패하면 format_errors로 끝난다. 무한히 재시도하지 않는다."""
+    r, fake = run(ws, [EMPTY] * 6)
+    assert r.status == "format_errors" and r.format_errors == 3 and r.n_steps == 3
+    assert r.empty_retries == 3 and r.llm_calls == 6 and len(fake.calls) == 6
+
+
+def test_재시도도_호출_상한에_포함된다(ws):
+    """max_calls=2일 때 첫 호출 + 재시도로 상한을 다 쓰고, 다음 단계에서 budget으로 끝난다 (몰래 호출하지 않는다)."""
+    fake = FakeLLM(["", ""])
+    r = debug_loop(ws, ev(ws), LLMClient(fake, max_calls=2))
+    assert r.status == "budget" and r.empty_retries == 1 and r.llm_calls == 2 and len(fake.calls) == 2
+    assert r.steps[0].kind == "format_error"
+
+
+def test_재시도_중_쿼터가_소진되면_quota로_끝난다(ws):
+    """재시도 호출이 일일 한도 예외를 만나면 그 단계를 기록하지 않고 quota로 끝난다 (이어하기 대상)."""
+    fake = FakeLLM([EMPTY, DailyQuotaExceeded("일일 한도")])
+    r = debug_loop(ws, ev(ws), LLMClient(fake))
+    assert r.status == "quota" and r.n_steps == 0 and r.empty_retries == 1
+
+
+def test_빈_응답은_캐시에_남지_않아_재시도가_새_응답을_받고_다음_실행은_재생한다(ws, tmp_path):
+    """캐시를 켠 상태에서도 재시도가 효과가 있다 (빈 응답이 저장되어 있으면 같은 빈 응답이 재생된다).
+    정상 응답은 저장되어 같은 프롬프트의 다음 실행에서 호출 없이 재생된다."""
+    cache = DiskCache(tmp_path)
+    f1 = FakeLLM([EMPTY, tool("read_rtl", file="rtl/a.v"), final()])
+    r1 = debug_loop(ws, ev(ws), LLMClient(f1, cache=cache))
+    assert r1.status == "final" and r1.llm_calls == 3 and r1.cached_calls == 0 and r1.empty_retries == 1
+    f2 = FakeLLM([])
+    r2 = debug_loop(ws, ev(ws), LLMClient(f2, cache=cache))
+    assert r2.status == "final" and r2.llm_calls == 0 and r2.cached_calls == 2 and r2.empty_retries == 0
+    assert f2.calls == []
+
+
+def test_재시도_정보가_JSON에_저장된다(ws):
+    """결과 JSON에서 어느 단계가 재시도됐고 버려진 응답의 finish_reason이 무엇이었는지 볼 수 있다."""
+    r, _ = run(ws, [EMPTY, tool("read_rtl", file="rtl/a.v"), final()])
+    d = json.loads(json.dumps(r.to_dict()))
+    assert d["empty_retries"] == 1
+    assert d["steps"][0]["retries"] == 1 and d["steps"][0]["retry_reasons"] == ["MALFORMED_FUNCTION_CALL"]
+
+
+def test_평탄한_propose_fix_호출은_단계를_잃지_않고_집계된다(ws):
+    """v0c B16: `"action":"propose_fix"` 평탄 호출이 형식 오류가 되어 마지막 단계와 겹쳐 수정안 없이 끝났다.
+    정규화하면 형식 오류가 아니라 정상 도구 호출이고, 수정안이 저장되며 normalized_calls로 센다."""
+    flat = json.dumps({"thought": "fix", "action": "propose_fix", "file": "rtl/a.v",
+                       "find": "line3", "replace": "LINE3", "rationale": "r"})
+    r, fake = run(ws, [flat, final(fix_proposal_ids=[1], evidence=[{"step": 1, "observation": "o"}])])
+    assert r.status == "final" and r.format_errors == 0 and r.normalized_calls == 1
+    assert r.steps[0].kind == "tool" and r.steps[0].tool == "propose_fix" and "정규화" in r.steps[0].note
+    assert len(r.proposals) == 1 and r.to_dict()["normalized_calls"] == 1
+    assert '"action": "tool"' in fake.calls[1].prompt and '"tool": "propose_fix"' in fake.calls[1].prompt

@@ -125,3 +125,46 @@ def test_only와_no_spec(setup, monkeypatch, capsys):
     assert cli.main(["--catalog", str(cat), "--dry-run", "--no-spec", "--only", "ZZZ"]) == 0
     out = capsys.readouterr().out
     assert "평가 대상 0개" in out and "spec 미사용" in out
+
+
+def test_출력_토큰_한도_옵션이_전달된다(setup, monkeypatch, capsys):
+    """CLI의 --max-output-tokens(기본 4096)가 LLM 요청까지 전달되고, 계획 출력에 표시된다."""
+    tmp, cat, calls = setup
+    fake = install_client(monkeypatch, calls, [tool("read_rtl", file="rtl/a.v"), final(2)])
+    assert cli.main(["--catalog", str(cat), "--out", str(tmp / "o"), "--report", str(tmp / "r.md"),
+                     "--max-output-tokens", "2048"]) == 0
+    assert {c.max_output_tokens for c in fake.calls} == {2048}
+    assert "최대 출력 토큰 2048" in capsys.readouterr().out
+    install_client(monkeypatch, calls, [])
+    cli.main(["--catalog", str(cat), "--dry-run"])
+    assert "최대 출력 토큰 4096" in capsys.readouterr().out
+
+
+def test_빈_응답_재시도_옵션과_요약_출력(setup, monkeypatch, capsys):
+    """기본은 재시도 1회: 빈 응답을 받으면 같은 요청을 다시 보내고 요약에 횟수가 나온다. --empty-retries 0이면 끈다."""
+    tmp, cat, calls = setup
+    empty = ("", "MALFORMED_FUNCTION_CALL")
+    fake = install_client(monkeypatch, calls, [tool("read_rtl", file="rtl/a.v"), empty, final(2)])
+    assert cli.main(["--catalog", str(cat), "--out", str(tmp / "o"), "--report", str(tmp / "r.md")]) == 0
+    out = capsys.readouterr().out
+    assert "빈 응답 재시도 1회 (그중 정상 응답을 받아 이어간 것 1회)" in out and len(fake.calls) == 3
+
+    calls["make_client"] = 0
+    fake = install_client(monkeypatch, calls, [tool("read_rtl", file="rtl/a.v"), empty, final(2)])
+    assert cli.main(["--catalog", str(cat), "--out", str(tmp / "o2"), "--report", str(tmp / "r2.md"),
+                     "--empty-retries", "0"]) == 0
+    out = capsys.readouterr().out
+    assert "빈 응답 재시도 0회" in out
+    d = json.loads((tmp / "o2" / "results.json").read_text(encoding="utf-8"))
+    assert d["summary"]["empty_retries"] == 0 and d["summary"]["format_error_rate"] > 0
+
+
+def test_캐시를_켜면_새_표본이_아니라는_안내를_출력한다(setup, monkeypatch, capsys):
+    """같은 프롬프트의 이전 실행은 캐시에서 그대로 재생된다. 실행 간 변동을 보려는 사람이 모르고 지나치지 않도록 알린다."""
+    tmp, cat, calls = setup
+    install_client(monkeypatch, calls, [tool("read_rtl", file="rtl/a.v"), final(2)])
+    cli.main(["--catalog", str(cat), "--out", str(tmp / "o"), "--report", str(tmp / "r.md")])
+    assert "새 표본이 되지 않는다" in capsys.readouterr().out
+    install_client(monkeypatch, calls, [tool("read_rtl", file="rtl/a.v"), final(2)])
+    cli.main(["--catalog", str(cat), "--out", str(tmp / "o3"), "--report", str(tmp / "r3.md"), "--no-cache"])
+    assert "새 표본이 되지 않는다" not in capsys.readouterr().out

@@ -144,6 +144,13 @@ def summarize_cases(cases: list[Case]) -> dict[str, Any]:
     steps = [c.run["n_steps"] for c in finals]
     total_steps = sum(c.run["n_steps"] for c in ev)
     fmt = sum(c.run["format_errors"] for c in ev)
+    # STOP이 아닌 이유로 끝난 응답 (MAX_TOKENS 등): 빈 응답이나 잘린 JSON의 원인 후보
+    non_stop = sum(1 for c in ev for s in c.run.get("steps", []) if s.get("finish_reason") not in (None, "STOP"))
+    # 빈 응답 재시도: 보낸 횟수와, 재시도로 정상 응답을 받아 단계를 이어간 횟수
+    normalized = sum(c.run.get("normalized_calls", 0) for c in ev if c.run)
+    retries_sent = sum(c.run.get("empty_retries", 0) for c in ev)
+    retries_recovered = sum(1 for c in ev for s in c.run.get("steps", [])
+                            if s.get("retries", 0) > 0 and s.get("kind") != "format_error")
     by_type: dict[str, dict[str, int]] = {}
     for c in ev:
         t = by_type.setdefault(c.type, {"n": 0, "located": 0, "exact": 0})
@@ -174,6 +181,8 @@ def summarize_cases(cases: list[Case]) -> dict[str, Any]:
         "llm_calls": sum(c.run["llm_calls"] for c in ev),
         "cached_calls": sum(c.run["cached_calls"] for c in ev),
         "format_error_rate": fmt / total_steps if total_steps else None,
+        "non_stop_steps": non_stop,
+        "normalized_calls": normalized, "empty_retries": retries_sent, "empty_retries_recovered": retries_recovered,
         "rejected_reports": sum(c.run["rejected_reports"] for c in ev),
         "input_tokens": sum(c.run["input_tokens"] for c in ev),
         "output_tokens": sum(c.run["output_tokens"] for c in ev),
@@ -217,6 +226,7 @@ def _load_case(cases_dir: Path, bug_id: str) -> Case | None:
 def run_debug_eval(bugs: list[Bug], golden_rtl_dir: str | Path, tb_path: str | Path, tb_top: str,
                    dut_top: str, runner: Runner, client, work_root: str | Path, dut: str = "dut",
                    spec_text: str | None = None, max_steps: int = 8, near: int = NEAR, resume: bool = False,
+                   max_output_tokens: int | None = 4096, empty_retries: int = 1,
                    vcd_loader: Callable[[str | None], Any] = default_vcd_loader,
                    progress: Callable[[str], None] | None = None) -> DebugEvalReport:
     say = progress or (lambda s: None)
@@ -258,7 +268,8 @@ def run_debug_eval(bugs: list[Bug], golden_rtl_dir: str | Path, tb_path: str | P
                                   vcd_tools=vcd_loader(j.vcd_path))
         ev = evidence_from_log(dut_top, j.status, j.tb_verdict, ws.log, ws.list_files(), spec_text=spec_text)
         say("  Agent 실행")
-        run: DebugRun = debug_loop(ws, ev, client, max_steps=max_steps,
+        run: DebugRun = debug_loop(ws, ev, client, max_steps=max_steps, max_output_tokens=max_output_tokens,
+                                   empty_retries=empty_retries,
                                    on_step=lambda s: say(f"    step {s.step}: {s.kind}"
                                                          f"{' ' + s.tool if s.tool else ''}"))
         sc = score_case(run.report, truth, near)
@@ -273,6 +284,9 @@ def run_debug_eval(bugs: list[Bug], golden_rtl_dir: str | Path, tb_path: str | P
         _save_case(cases_dir, case)
         report.cases.append(case)
         say(f"  -> {run.status}, {sc.category}, 단계 {run.n_steps}, 호출 {run.llm_calls}")
+    # 어떤 프롬프트로 얻은 결과인지 기록한다 (이어하기 중 프롬프트가 바뀌면 서로 다른 값이 섞이므로 경고에 쓴다)
+    report.meta["prompt_shas"] = sorted({c.run.get("prompt_sha") for c in report.cases
+                                        if c.run and c.run.get("prompt_sha")})
     return report
 
 
@@ -293,6 +307,12 @@ def render_markdown(report: DebugEvalReport, label: str = "") -> str:
     m = report.meta
     L.append(f"입력 TB: `{m.get('tb')}` (사람이 쓴 self-checking TB, 골든 PASS 검증됨). 최대 단계 {m.get('max_steps')}, "
              f"줄 허용 오차 {m.get('near')}줄.")
+    shas = m.get("prompt_shas") or []
+    if shas:
+        L.append(f"프롬프트 버전(시스템 프롬프트 해시): {', '.join(shas)}")
+    if len(shas) > 1:
+        L.append("")
+        L.append("⚠️ **케이스마다 프롬프트 버전이 다르다.** 이어하기 사이에 프롬프트나 도구 명세가 바뀐 것이다. 이 수치는 한 조건의 값이 아니다.")
     L.append("")
     if report.aborted_reason:
         L += [f"⚠️ **중간에 멈춤**: {report.aborted_reason}. 아래 수치는 끝난 케이스만의 값이다. 같은 명령에 `--resume`을 붙여 이어서 실행한다.", ""]
@@ -308,6 +328,9 @@ def render_markdown(report: DebugEvalReport, label: str = "") -> str:
           f"| LLM 호출 (캐시 제외) / 캐시 | {s['llm_calls']} / {s['cached_calls']} |",
           f"| 형식 오류율 (단계 기준) | {_pct(s['format_error_rate'])} |",
           f"| 거부된 보고서 수 | {s['rejected_reports']} |",
+          f"| STOP이 아닌 이유로 끝난 응답 수 (MAX_TOKENS 등) | {s['non_stop_steps']} |",
+          f"| 빈 응답 재시도 (보냄 / 단계를 이어간 횟수) | {s['empty_retries']} / {s['empty_retries_recovered']} |",
+          f"| 평탄한 도구 호출 정규화 (형식 오류였을 호출) | {s['normalized_calls']} |",
           f"| 토큰 입력 / 출력 | {s['input_tokens']} / {s['output_tokens']} |", ""]
     L += ["### 결과 분류", "", "| 분류 | 개수 |", "|---|---|"] + [f"| {k} | {v} |" for k, v in s["categories"].items()] + [""]
     if s["by_type"]:

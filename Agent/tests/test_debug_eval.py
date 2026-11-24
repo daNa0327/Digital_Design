@@ -246,7 +246,7 @@ def test_VCD가_있으면_Agent가_VCD_도구를_안내받는다(env):
 # 집계와 리포트
 # ---------------------------------------------------------------------------------------------
 def make_case(id, type, cat, conf="high", status="final", steps=3, calls=3, fmt=0, rej=0, outcome="evaluated"):
-    run = {"status": status, "n_steps": steps, "n_tool_calls": steps - 1, "llm_calls": calls, "cached_calls": 0,
+    run = {"status": status, "steps": [], "n_steps": steps, "n_tool_calls": steps - 1, "llm_calls": calls, "cached_calls": 0,
            "input_tokens": 100, "output_tokens": 10, "format_errors": fmt, "rejected_reports": rej,
            "report": {"location": {"file": "rtl/a.v", "line": 3}}}
     return Case(id, type, outcome, "FAIL", {"file": "rtl/a.v", "line": 3}, run,
@@ -289,3 +289,103 @@ def test_마크다운_리포트(env):
     r.aborted_reason = "B2: quota (한도)"
     md2 = render_markdown(r)
     assert "중간에 멈춤" in md2 and "--resume" in md2
+
+
+# ---------------------------------------------------------------------------------------------
+# 7-4 1차 실측에서 발견된 결함의 회귀 테스트
+# ---------------------------------------------------------------------------------------------
+class StampedRunner(Runner):
+    """호출마다 로그의 시각이 달라지는 Runner (실제 xsim 로그처럼)."""
+
+    def __call__(self, files, top, workdir):
+        j = super().__call__(files, top, workdir)
+        j.xsim_stdout = (f"Start of session at: Tue Nov 24 18:{len(self.calls):02d}:41 2026\n" + j.xsim_stdout
+                         + f"Exiting xsim at Tue Nov 24 18:{len(self.calls):02d}:43 2026...\n")
+        return j
+
+
+def test_시각이_다른_로그여도_같은_실패는_캐시를_맞춘다(env, tmp_path):
+    """실측 1차의 결함: 로그에 실행 시각이 들어 있어 같은 변형을 다시 돌려도 캐시가 안 맞았다.
+    시각이 달라도 두 번째 평가의 실제 LLM 호출은 0회여야 한다."""
+    from llm import DiskCache
+    g, tb, bugs, tmp = env
+    script = [tool("read_rtl", file="rtl/a.v"), final("rtl/a.v", 2), tool("read_rtl", file="rtl/b.v"), final("rtl/b.v", 2)]
+    c1 = LLMClient(FakeLLM(script), cache=DiskCache(tmp_path / "cache"))
+    r1 = run_debug_eval(bugs[:2], g, tb, "tb", "dut", StampedRunner(), c1, tmp / "e1", dut="dut")
+    fake2 = FakeLLM([])
+    r2 = run_debug_eval(bugs[:2], g, tb, "tb", "dut", StampedRunner(), LLMClient(fake2, cache=DiskCache(tmp_path / "cache")),
+                        tmp / "e2", dut="dut")
+    # 서로 다른 변형이 같은 첫 프롬프트를 공유하면 첫 실행에서도 캐시가 맞을 수 있으므로 "총 요청 수"로 비교한다
+    total1 = r1.summary["llm_calls"] + r1.summary["cached_calls"]
+    assert r1.summary["llm_calls"] >= 1 and r2.summary["llm_calls"] == 0 and r2.summary["cached_calls"] == total1
+    assert fake2.calls == []
+
+
+def test_STOP이_아닌_종료를_집계한다(env):
+    """MAX_TOKENS 같은 종료가 몇 번 있었는지 요약과 리포트에 나온다 (빈 응답/잘린 JSON 원인 확인용)."""
+    g, tb, bugs, tmp = env
+    rep, _, _ = go(env, [(tool("read_rtl", file="rtl/a.v"), "MAX_TOKENS"), final("rtl/a.v", 2),
+                         tool("read_rtl", file="rtl/b.v"), final("rtl/b.v", 2)])
+    assert rep.summary["non_stop_steps"] == 1
+    assert "STOP이 아닌 이유로 끝난 응답 수 (MAX_TOKENS 등) | 1 |" in render_markdown(rep)
+
+
+def test_출력_토큰_한도가_요청에_전달된다(env):
+    """평가 하니스가 정한 max_output_tokens가 Agent의 모든 요청에 실린다 (기본 4096)."""
+    rep, fake, _ = go(env, [tool("read_rtl", file="rtl/a.v"), final("rtl/a.v", 2),
+                            tool("read_rtl", file="rtl/b.v"), final("rtl/b.v", 2)])
+    assert {c.max_output_tokens for c in fake.calls} == {4096}
+    rep2, fake2, _ = go(env, [tool("read_rtl", file="rtl/a.v"), final("rtl/a.v", 2),
+                              tool("read_rtl", file="rtl/b.v"), final("rtl/b.v", 2)], max_output_tokens=777)
+    assert {c.max_output_tokens for c in fake2.calls} == {777}
+
+
+def test_결과에_프롬프트_버전이_기록되고_섞이면_경고한다(env):
+    """평가 메타에 프롬프트 해시가 남고, 케이스마다 해시가 다르면(이어하기 중 프롬프트가 바뀐 경우) 리포트가 경고한다."""
+    from core.debug_eval import DebugEvalReport
+    rep, _, _ = go(env, [tool("read_rtl", file="rtl/a.v"), final("rtl/a.v", 2),
+                         tool("read_rtl", file="rtl/b.v"), final("rtl/b.v", 2)])
+    assert len(rep.meta["prompt_shas"]) == 1
+    md = render_markdown(rep)
+    assert "프롬프트 버전(시스템 프롬프트 해시): " + rep.meta["prompt_shas"][0] in md and "프롬프트 버전이 다르다" not in md
+    mixed = DebugEvalReport("d", rep.cases, meta={**rep.meta, "prompt_shas": ["aaa", "bbb"]})
+    assert "케이스마다 프롬프트 버전이 다르다" in render_markdown(mixed)
+
+
+def test_빈_응답_재시도가_집계되고_리포트에_나온다(env):
+    """재시도 횟수와 그 덕에 단계를 이어간 횟수가 요약과 마크다운에 들어간다. 재시도는 형식 오류율을 올리지 않는다."""
+    rep, fake, _ = go(env, [("", "MALFORMED_FUNCTION_CALL"), tool("read_rtl", file="rtl/a.v"), final("rtl/a.v", 2),
+                            tool("read_rtl", file="rtl/b.v"), final("rtl/b.v", 2)])
+    s = summarize_cases(rep.cases)
+    assert s["empty_retries"] == 1 and s["empty_retries_recovered"] == 1
+    assert s["format_error_rate"] == 0
+    assert "| 빈 응답 재시도 (보냄 / 단계를 이어간 횟수) | 1 / 1 |" in render_markdown(rep)
+
+
+def test_재시도가_실패한_경우는_이어간_횟수에_세지_않는다(env):
+    """재시도해도 비어서 형식 오류가 된 단계는 '보냄'에만 들어가고 '이어간 횟수'에는 들어가지 않는다. 옛 JSON(필드 없음)도 읽는다."""
+    rep, _, _ = go(env, [tool("read_rtl", file="rtl/a.v"), ("", "MALFORMED_FUNCTION_CALL"),
+                         ("", "MALFORMED_FUNCTION_CALL"), final("rtl/a.v", 2),
+                         tool("read_rtl", file="rtl/b.v"), final("rtl/b.v", 2)])
+    s = summarize_cases(rep.cases)
+    assert s["empty_retries"] == 1 and s["empty_retries_recovered"] == 0
+    for c in rep.cases:                                                # v0a/v0b 때 저장된 JSON에는 필드가 없다
+        if not c.run:                                                  # 실행되지 않은 케이스(동등 변형 등)
+            continue
+        c.run.pop("empty_retries", None)
+        for st in c.run["steps"]:
+            st.pop("retries", None)
+    assert summarize_cases(rep.cases)["empty_retries"] == 0
+
+
+def test_평탄한_도구_호출_정규화가_집계되고_옛_JSON도_읽는다(env):
+    """정규화한 호출 수가 요약과 마크다운에 나온다. 형식 오류율은 올리지 않는다. v0a~v0c JSON(필드 없음)은 0으로 읽는다."""
+    flat = json.dumps({"action": "read_rtl", "file": "rtl/a.v"})
+    rep, _, _ = go(env, [flat, final("rtl/a.v", 2), tool("read_rtl", file="rtl/b.v"), final("rtl/b.v", 2)])
+    s = summarize_cases(rep.cases)
+    assert s["normalized_calls"] == 1 and s["format_error_rate"] == 0
+    assert "| 평탄한 도구 호출 정규화 (형식 오류였을 호출) | 1 |" in render_markdown(rep)
+    for c in rep.cases:
+        if c.run:
+            c.run.pop("normalized_calls", None)
+    assert summarize_cases(rep.cases)["normalized_calls"] == 0

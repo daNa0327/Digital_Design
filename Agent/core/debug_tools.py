@@ -25,6 +25,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
+from core.rtl_analyzer import strip_comments
 from core.vcd_tools import TOOL_SPECS as VCD_SPECS
 from core.vcd_tools import VcdTools
 from core.vcd_tools import dispatch as vcd_dispatch
@@ -48,6 +49,10 @@ def _lines(text: str) -> list[str]:
     return ls
 
 
+def _squash(s: str) -> str:
+    return re.sub(r"\s+", "", s)
+
+
 def _cut(s: str) -> str:
     return s if len(s) <= MAX_LINE_CHARS else s[:MAX_LINE_CHARS] + "...[줄 잘림]"
 
@@ -59,11 +64,20 @@ def _clamp(v: Any, lo: int, hi: int) -> int:
 # ---------------------------------------------------------------------------------------------
 # 경로 정리: 로그에 섞인 절대 경로를 논리 이름으로 바꾼다
 # ---------------------------------------------------------------------------------------------
-_ABS_PATH = re.compile(r"""(?:[A-Za-z]:[\\/]|/)(?:[^\s"'<>|:*?]+[\\/])*[^\s"'<>|:*?\\/]+\.(?:v|sv|vh|svh|log|vcd|tcl|f)\b""")
+_ABS_PATH = re.compile(r"""(?<![\w./\\-])(?:[A-Za-z]:[\\/]|/)(?:[^\s"'<>|:*?]+[\\/])*[^\s"'<>|:*?\\/]+\.(?:v|sv|vh|svh|log|vcd|tcl|f)\b""")
+
+
+_MONTHS = "Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec"
+_DAYS = "Mon|Tue|Wed|Thu|Fri|Sat|Sun"
+_WALLCLOCK = re.compile(rf"\b(?:{_DAYS}) (?:{_MONTHS}) +\d{{1,2}} \d{{2}}:\d{{2}}:\d{{2}} \d{{4}}\b")
+_CPU_TIME = re.compile(r"Time \(s\): cpu = [^\n]*")
 
 
 def sanitize_log(log: str, path_map: dict[str, str]) -> str:
-    """로그의 절대 경로를 논리 이름으로 바꾼다.
+    """로그에서 실행마다 달라지는 값(절대 경로, 시각, 경과 시간)을 지운다.
+
+    경로는 논리 이름으로 바꾼다. 시각과 경과 시간은 `<time>`으로 바꾼다. 이걸 지우지 않으면 같은 실패를 다시 돌려도
+    프롬프트가 달라져서 디스크 캐시가 맞지 않고 (호출 한도를 다시 씀) 재현도 안 된다.
 
     path_map: {파일 basename: 논리 이름}. basename이 맵에 있으면 논리 이름으로, 없으면 `<path>/basename`으로 바꾼다.
     경로 중간 폴더 이름(변형 ID, 평가 실행 폴더 등)이 Agent에게 전달되지 않게 하는 것이 목적이다.
@@ -73,7 +87,9 @@ def sanitize_log(log: str, path_map: dict[str, str]) -> str:
         base = PureWindowsPath(raw).name if ("\\" in raw or re.match(r"[A-Za-z]:", raw)) else PurePosixPath(raw).name
         return path_map.get(base, f"<path>/{base}")
 
-    return _ABS_PATH.sub(repl, _norm(log))
+    out = _ABS_PATH.sub(repl, _norm(log))
+    out = _WALLCLOCK.sub("<time>", out)
+    return _CPU_TIME.sub("Time (s): <elapsed>", out)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -83,7 +99,7 @@ def sanitize_log(log: str, path_map: dict[str, str]) -> str:
 class Proposal:
     id: int
     file: str
-    line: int                  # find가 시작하는 줄 (1부터)
+    line: int                  # 수정이 실제로 처음 달라지는 줄 (1부터). find 블록의 첫 줄이 아니다
     find: str
     replace: str
     rationale: str
@@ -91,6 +107,19 @@ class Proposal:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+def _first_changed_line(text: str, idx: int, find: str, replace: str) -> int:
+    """find가 text의 idx에서 시작할 때, replace와 처음 달라지는 문자가 있는 줄 번호(1부터).
+
+    find 블록이 앞뒤 문맥을 길게 포함해도 변경 줄을 가리키게 한다. 블록의 첫 줄을 돌려주면
+    Agent가 그 값을 보고서 위치로 베껴 실제 변경 줄과 어긋난다 (v0c B03).
+    """
+    d = 0
+    n = min(len(find), len(replace))
+    while d < n and find[d] == replace[d]:
+        d += 1
+    return text.count("\n", 0, idx + d) + 1
 
 
 @dataclass
@@ -198,6 +227,7 @@ class DebugWorkspace:
         return {"matches": len(hits), "returned": min(len(hits), cap), "truncated": len(hits) > cap,
                 "results": hits[:cap]}
 
+    
     # ---- 수정 제안 (저장만, 적용 안 함)
     def propose_fix(self, file: str, find: str, replace: str, rationale: str = "") -> dict[str, Any]:
         if file in self.tb:
@@ -215,13 +245,15 @@ class DebugWorkspace:
             return {"error": "find가 파일에 없음. read_rtl로 현재 텍스트를 다시 확인하라 (공백과 줄바꿈 포함 정확히 일치해야 함)"}
         if count > 1:
             return {"error": f"find가 {count}번 나타남. 한 번만 나타나도록 앞뒤 문맥을 포함해 길게 쓰라"}
+        if _squash(strip_comments(text.replace(find, replace, 1))) == _squash(strip_comments(text)):
+            return {"error": "수정이 주석이나 공백만 바꿔서 동작이 달라지지 않는다. 실제 RTL 코드를 바꾸는 수정안을 제안하라."}
         for p in self.proposals:
             if (p.file, p.find, p.replace) == (file, find, replace):
                 return {"proposal_id": p.id, "diff": p.diff, "line": p.line, "duplicate": True}
         if len(self.proposals) >= MAX_PROPOSALS:
             return {"error": f"제안은 최대 {MAX_PROPOSALS}개"}
         idx = text.index(find)
-        line = text.count("\n", 0, idx) + 1
+        line = _first_changed_line(text, idx, find, replace)
         new_text = text[:idx] + replace + text[idx + len(find):]
         diff = "".join(difflib.unified_diff(text.splitlines(keepends=True), new_text.splitlines(keepends=True),
                                             fromfile=f"a/{file}", tofile=f"b/{file}", n=2))
@@ -275,7 +307,7 @@ _DEBUG_SPECS: list[dict[str, Any]] = [
      "input_schema": {"type": "object", "required": ["pattern"], "properties": {
          "pattern": {"type": "string"}, "max_results": {"type": "integer"}}}},
     {"name": "propose_fix",
-     "description": "RTL 수정안을 저장한다 (적용은 사람이 한다). find는 파일에서 정확히 한 번 나타나는 텍스트여야 한다. TB는 수정할 수 없다.",
+     "description": "RTL 수정안을 저장한다 (파일은 바뀌지 않는다). find는 항상 **원본** 파일에서 정확히 한 번 나타나는 텍스트여야 한다 (이전 제안은 적용되지 않으므로 누적되지 않음). 주석이나 공백만 바꾸는 수정안은 거부된다. TB는 수정할 수 없다.",
      "input_schema": {"type": "object", "required": ["file", "find", "replace"], "properties": {
          "file": {"type": "string"}, "find": {"type": "string"}, "replace": {"type": "string"},
          "rationale": {"type": "string"}}}},

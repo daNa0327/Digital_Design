@@ -209,3 +209,39 @@ def test_프롬프트에_경로가_남지_않는다(tmp_path):
     w = workspace_from_files([d / "a.v"], [t], f'Error File "{d / "a.v"}" Line 1\nCHECK_FAIL t=1 ns sig=s exp=0 got=1\n')
     msg = build_initial_message(evidence_from_log("m", "FAIL", "FAIL", w.log, w.list_files()))
     assert "B07" not in msg and str(tmp_path) not in msg and "B07" not in w.log
+
+
+_TOOLS = frozenset({"read_rtl", "propose_fix", "list_signals"})
+
+
+def test_평탄한_도구_호출을_정규화한다():
+    """v0c 형식 오류 5건은 모두 propose_fix 시도였고 4건이 `{"action":"propose_fix","file":...}`처럼 도구 이름을
+    action 자리에 쓰고 인자를 최상위에 평탄하게 썼다. 의도가 분명하므로 tool 호출로 받아들이고 표시를 남긴다."""
+    a = parse_action('{"thought":"t","action":"propose_fix","file":"rtl/a.v","find":"x","replace":"y","rationale":"r"}',
+                     _TOOLS)
+    assert (a.kind, a.tool, a.normalized) == ("tool", "propose_fix", True)
+    assert a.args == {"file": "rtl/a.v", "find": "x", "replace": "y", "rationale": "r"} and a.thought == "t"
+
+
+def test_평탄한_호출도_코드펜스와_args_객체를_받는다():
+    """펜스 안(v0c B01)이거나 args를 따로 둔 경우도 같은 도구 호출이다. args가 있으면 그것을 쓴다."""
+    a = parse_action('```json\n{"action":"read_rtl","file":"rtl/a.v"}\n```', _TOOLS)
+    assert a.tool == "read_rtl" and a.args == {"file": "rtl/a.v"} and a.normalized
+    b = parse_action('{"action":"read_rtl","args":{"file":"rtl/b.v"},"file":"rtl/a.v"}', _TOOLS)
+    assert b.args == {"file": "rtl/b.v"}
+
+
+def test_정규화는_tool_names가_있고_이름이_맞을_때만():
+    """tool_names를 안 주면 기존대로 오류다. 모르는 이름이나 tool 필드가 다른 이름이면 오류를 유지한다."""
+    txt = '{"action":"propose_fix","file":"rtl/a.v"}'
+    with pytest.raises(ProtocolError, match="알 수 없는 action"):
+        parse_action(txt)
+    with pytest.raises(ProtocolError, match="알 수 없는 action"):
+        parse_action('{"action":"dance","file":"x"}', _TOOLS)
+    with pytest.raises(ProtocolError, match="알 수 없는 action"):
+        parse_action('{"action":"propose_fix","tool":"read_rtl"}', _TOOLS)
+
+
+def test_정상_호출은_정규화_표시가_없다():
+    a = parse_action('{"action":"tool","tool":"read_rtl","args":{}}', _TOOLS)
+    assert a.normalized is False

@@ -186,6 +186,55 @@ def test_propose_fix_CRLF_파일도_일치(ws):
     assert w.propose_fix("rtl/m.v", "a\nb", "a\nc")["proposal_id"] == 1
 
 
+_CTRL = """module c;
+  case (x)
+    2'b11: begin
+      if (!empty && !full) begin
+        wr_ptr <= wr_ptr + 1;
+        rd_ptr <= rd_ptr;
+      end
+      else if (empty) begin
+        wr_ptr <= wr_ptr + 1;
+      end
+    end
+  endcase
+endmodule
+"""
+
+
+def test_propose_fix_줄번호는_find_첫줄이_아니라_첫_변경_줄():
+    """v0c B03: find가 `if` 줄(4)부터 시작하지만 바뀌는 줄은 `rd_ptr <= rd_ptr;`(6)다. Agent가 도구가 돌려준
+    line을 보고서 위치로 베껴서 near로 채점됐다. line은 처음 달라지는 줄이어야 한다."""
+    w = DebugWorkspace({"rtl/c.v": _CTRL}, {}, "")
+    find = "      if (!empty && !full) begin\n        wr_ptr <= wr_ptr + 1;\n        rd_ptr <= rd_ptr;\n      end"
+    r = w.propose_fix("rtl/c.v", find, find.replace("rd_ptr <= rd_ptr;", "rd_ptr <= rd_ptr + 1;"))
+    assert r["line"] == 6 and w.proposals[0].line == 6
+
+
+def test_propose_fix_줄을_끼워넣으면_삽입_위치():
+    """v0c B15: 블록 중간에 줄을 추가하면 처음 달라지는 줄은 삽입 위치다 (find 첫 줄이 아니다)."""
+    w = DebugWorkspace({"rtl/c.v": _CTRL}, {}, "")
+    find = "      if (!empty && !full) begin\n        wr_ptr <= wr_ptr + 1;\n        rd_ptr <= rd_ptr;\n      end"
+    rep = "      if (!empty && !full) begin\n        wr_ptr <= wr_ptr + 1;\n        rd_ptr <= rd_ptr;\n        cnt <= cnt;\n      end"
+    assert w.propose_fix("rtl/c.v", find, rep)["line"] == 7
+
+
+def test_propose_fix_줄_중간에서_시작하는_find():
+    """find가 줄 중간에서 시작해도 변경 문자가 있는 줄 번호를 돌려준다."""
+    w = DebugWorkspace({"rtl/c.v": "a\nassign y = t & u;\nz\n"}, {}, "")
+    assert w.propose_fix("rtl/c.v", "t & u", "t | u")["line"] == 2
+
+
+def test_propose_fix_중복_제안도_같은_줄():
+    """같은 수정안을 다시 내면 저장된 제안의 (변경) 줄을 그대로 돌려준다."""
+    w = DebugWorkspace({"rtl/c.v": _CTRL}, {}, "")
+    find = "        wr_ptr <= wr_ptr + 1;\n        rd_ptr <= rd_ptr;"
+    rep = "        wr_ptr <= wr_ptr + 1;\n        rd_ptr <= rd_ptr + 1;"
+    a = w.propose_fix("rtl/c.v", find, rep)
+    b = w.propose_fix("rtl/c.v", find, rep)
+    assert a["line"] == b["line"] == 6 and b["duplicate"] is True
+
+
 # ---------------------------------------------------------------------------------------------
 # dispatch / 명세
 # ---------------------------------------------------------------------------------------------
@@ -241,3 +290,71 @@ def test_끝_줄바꿈이_가짜_마지막_줄을_만들지_않는다():
     assert r["total_lines"] == 2 and [x["n"] for x in r["lines"]] == [1, 2]
     assert "error" in w.read_rtl("rtl/a.v", start_line=3)
     assert "error" in w.get_log_snippet(start_line=3)
+
+
+# ---------------------------------------------------------------------------------------------
+# 7-4 1차 실측에서 발견된 결함의 회귀 테스트
+# ---------------------------------------------------------------------------------------------
+def test_로그의_시각과_경과시간은_정규화된다():
+    """xsim 로그의 `Start of session at: ...`, `Exiting xsim at ...`, `Time (s): cpu = ...`는 실행마다 달라서
+    프롬프트가 매번 바뀌고 디스크 캐시가 맞지 않았다 (실측 1차에서 같은 변형을 다시 돌려도 캐시 0회). 지운다."""
+    a = ("  **** Start of session at: Tue Nov 24 18:22:41 2026\nCHECK_FAIL t=1 ns sig=y exp=0 got=1\n"
+         "INFO: [Common 17-206] Exiting xsim at Tue Nov 24 18:22:43 2026...\nTime (s): cpu = 00:00:01 ; elapsed = 00:00:03\n")
+    b = a.replace("18:22:41", "09:01:07").replace("18:22:43", "09:01:12").replace("Tue Nov 24", "Wed Dec  2") \
+         .replace("cpu = 00:00:01 ; elapsed = 00:00:03", "cpu = 00:00:09 ; elapsed = 00:00:20")
+    assert a != b and sanitize_log(a, {}) == sanitize_log(b, {})
+    out = sanitize_log(a, {})
+    assert "2026" not in out and "<time>" in out and "CHECK_FAIL t=1 ns" in out
+
+
+def test_시각_정규화가_실패_정보를_건드리지_않는다():
+    """시각처럼 보이지 않는 숫자(시뮬레이션 시각 41010 ns, 줄 번호)와 상대 경로(`tb/x.v`)는 그대로 남는다."""
+    s = '$finish called at time : 41010 ns : File "tb/x.v" Line 204'
+    assert sanitize_log(s, {"x.v": "tb/x.v"}) == s
+
+
+def test_상대경로의_슬래시를_절대경로로_오인하지_않는다():
+    """`tb/x.v`의 `/x.v`를 절대 경로로 보고 `tbtb/x.v`로 바꾸는 결함을 막는다. 절대 경로는 여전히 논리 이름이 된다."""
+    m = {"x.v": "tb/x.v"}
+    assert sanitize_log('File "tb/x.v" Line 3', m) == 'File "tb/x.v" Line 3'
+    assert sanitize_log('see rtl/a.v and /abs/B07/x.v and C:\\w\\B07\\x.v', m) == 'see rtl/a.v and tb/x.v and tb/x.v'
+
+
+def test_시각만_다른_두_로그는_같은_초기_프롬프트를_만든다():
+    """정규화의 목적: 같은 실패는 같은 프롬프트(캐시 키)가 된다."""
+    from core.debug_protocol import build_initial_message, evidence_from_log
+    base = "Start of session at: Tue Nov 24 18:22:41 2026\nCHECK_FAIL t=1 ns sig=y exp=0 got=1\n"
+    msgs = []
+    for stamp in ("18:22:41", "03:15:59"):
+        w = DebugWorkspace({"rtl/a.v": "x\n"}, {}, sanitize_log(base.replace("18:22:41", stamp), {}))
+        msgs.append(build_msg(w, build_initial_message, evidence_from_log))
+    assert msgs[0] == msgs[1]
+
+
+def build_msg(w, build_initial_message, evidence_from_log):
+    return build_initial_message(evidence_from_log("m", "FAIL", "FAIL", w.log, w.list_files()))
+
+
+@pytest.mark.parametrize("find,replace", [
+    ("assign y = t;", "assign y = t; // 주석만 추가"),
+    ("assign y = t;", "assign y = t;   "),
+    ("assign y = t;", "assign   y   =   t ;"),
+    ("assign y = t;", "assign y = t; /* block */"),
+])
+def test_주석이나_공백만_바꾸는_수정안은_거부(ws, find, replace):
+    """실측 1차에서 Agent가 `// count remains unchanged` 주석만 추가하는 수정안을 냈고 시스템이 받아들였다.
+    동작이 달라지지 않는 수정안은 증거가 아니므로 거부하고 저장하지 않는다."""
+    r = ws.propose_fix("rtl/m.v", find, replace)
+    assert "주석이나 공백" in r["error"] and ws.proposals == []
+
+
+def test_주석과_함께_실제_코드도_바꾸면_수락(ws):
+    """주석을 같이 바꿔도 코드가 달라지면 정상 수정안이다."""
+    r = ws.propose_fix("rtl/m.v", "assign y = t;", "assign y = ~t; // fixed")
+    assert r["proposal_id"] == 1
+
+
+def test_propose_fix_설명에_원본_기준과_거부_조건이_있다(ws):
+    """Agent가 이전 제안이 적용된 줄 알고 그 위에 find를 쓰는 실수(실측 1차 B12)를 설명으로 막는다."""
+    d = next(s for s in tool_specs(ws) if s["name"] == "propose_fix")["description"]
+    assert "원본" in d and "누적되지 않음" in d and "주석이나 공백" in d

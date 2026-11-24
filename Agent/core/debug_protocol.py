@@ -44,6 +44,7 @@ class Action:
     tool: str | None = None
     args: dict[str, Any] = field(default_factory=dict)
     report: dict[str, Any] | None = None
+    normalized: bool = False                  # {"action": "<도구이름>", ...} 평탄 호출을 tool 호출로 바꾼 경우
 
 
 # ---------------------------------------------------------------------------------------------
@@ -71,7 +72,13 @@ def _json_objects(text: str) -> list[Any]:
     return out
 
 
-def parse_action(text: str) -> Action:
+def parse_action(text: str, tool_names: set[str] | frozenset[str] | None = None) -> Action:
+    """응답에서 action 하나를 뽑는다.
+
+    tool_names를 주면 `{"action": "propose_fix", "file": ..., "find": ...}`처럼 action 자리에 도구 이름을 쓰고
+    인자를 최상위에 평탄하게 쓴 호출을 tool 호출로 정규화한다 (v0c 형식 오류 5건이 모두 이 부류). 의도가
+    명확하고 모호하지 않을 때만 받아들이며, Action.normalized로 표시해 집계에서 보이게 한다.
+    """
     if not text or not text.strip():
         raise ProtocolError("응답이 비어 있다. JSON 객체 하나로 답하라.")
     objs = _json_objects(text)
@@ -100,6 +107,11 @@ def parse_action(text: str) -> Action:
         if not isinstance(rep, dict):
             raise ProtocolError('action이 "final"이면 "report"에 JSON 객체가 필요하다.')
         return Action("final", thought, report=rep)
+    if tool_names and isinstance(kind, str) and kind in tool_names and o.get("tool") in (None, kind):
+        args = o.get("args")
+        if not isinstance(args, dict):
+            args = {k: v for k, v in o.items() if k not in ("action", "thought", "tool", "args")}
+        return Action("tool", thought, tool=kind, args=args, normalized=True)
     raise ProtocolError(f'알 수 없는 action: {kind!r}. "tool" 또는 "final"만 허용된다.')
 
 

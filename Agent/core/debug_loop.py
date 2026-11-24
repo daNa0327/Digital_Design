@@ -24,6 +24,7 @@ LLM 호출 하나가 한 "단계"다. 도구 호출, 형식 오류, 거부된 �
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -44,6 +45,9 @@ class StepLog:
     args: dict[str, Any] | None = None
     note: str = ""                    # 형식 오류/거부 이유 등
     cached: bool = False
+    finish_reason: str | None = None  # LLM이 멈춘 이유 (STOP이 아니면 잘렸을 수 있다. 예: MAX_TOKENS)
+    retries: int = 0                  # 이 단계에서 빈 응답을 받아 같은 요청을 다시 보낸 횟수
+    retry_reasons: list[str | None] = field(default_factory=list)   # 버려진 빈 응답들의 finish_reason
 
 
 @dataclass
@@ -58,8 +62,12 @@ class DebugRun:
     output_tokens: int = 0
     format_errors: int = 0
     rejected_reports: int = 0
+    normalized_calls: int = 0         # 평탄한 도구 호출을 정규화해 받아들인 횟수 (형식 오류였을 호출)
+    empty_retries: int = 0            # 빈 응답 때문에 다시 보낸 요청 수 (단계와 형식 오류로 세지 않음. llm_calls에는 포함)
     error: str | None = None
     proposals: list[dict[str, Any]] = field(default_factory=list)
+    initial_message: str = ""        # Agent이 처음 받은 증거 메시지 (사후 분석에서 Agent가 무엇을 알았는지 확인)
+    prompt_sha: str = ""             # 시스템 프롬프트(규약 + 도구 명세)의 해시. 어떤 프롬프트로 얻은 결과인지 구분
 
     @property
     def n_steps(self) -> int:
@@ -76,9 +84,11 @@ class DebugRun:
             "llm_calls": self.llm_calls, "cached_calls": self.cached_calls,
             "input_tokens": self.input_tokens, "output_tokens": self.output_tokens,
             "format_errors": self.format_errors, "rejected_reports": self.rejected_reports,
+            "empty_retries": self.empty_retries, "normalized_calls": self.normalized_calls,
             "steps": [vars(s) for s in self.steps],
             "turns": [{"step": t.step, "assistant": t.assistant, "observation": t.observation} for t in self.turns],
             "proposals": self.proposals,
+            "prompt_sha": self.prompt_sha, "initial_message": self.initial_message,
         }
 
 
@@ -105,15 +115,17 @@ def semantic_problems(report: dict[str, Any], ws: DebugWorkspace, tool_steps: se
 
 def debug_loop(ws: DebugWorkspace, evidence: Evidence, client, max_steps: int = 8,
                max_format_errors: int = 3, model: str | None = None, temperature: float = 0.0,
-               max_output_tokens: int | None = 1500,
+               max_output_tokens: int | None = 1500, empty_retries: int = 1,
                on_step: Callable[[StepLog], None] | None = None) -> DebugRun:
     system = build_system_prompt(tool_specs(ws))
     initial = build_initial_message(evidence)
-    run = DebugRun(status="max_steps")
+    run = DebugRun(status="max_steps", initial_message=initial,
+                   prompt_sha=hashlib.sha256(system.encode("utf-8")).hexdigest()[:12])
     tool_steps: set[int] = set()
     seen_calls: dict[str, int] = {}
     consecutive_fmt = 0
     rtl_names = sorted(ws.rtl)
+    tool_names = frozenset(sp["name"] for sp in tool_specs(ws))
 
     def record(log: StepLog, assistant: str, observation: str) -> None:
         run.steps.append(log)
@@ -123,33 +135,51 @@ def debug_loop(ws: DebugWorkspace, evidence: Evidence, client, max_steps: int = 
 
     for step in range(1, max_steps + 1):
         prompt = build_prompt(initial, run.turns, max_steps - step + 1)
-        try:
-            resp = client.generate(LLMRequest(prompt=prompt, system=system, model=model,
-                                              temperature=temperature, max_output_tokens=max_output_tokens))
-        except DailyQuotaExceeded as e:
-            run.status, run.error = "quota", str(e)
-            break
-        except BudgetExceeded as e:
-            run.status, run.error = "budget", str(e)
-            break
-        except LLMError as e:
-            run.status, run.error = "llm_error", f"{type(e).__name__}: {e}"
+        retries, retry_reasons = 0, []
+        resp = None
+        while True:
+            try:
+                resp = client.generate(LLMRequest(prompt=prompt, system=system, model=model,
+                                                  temperature=temperature, max_output_tokens=max_output_tokens))
+            except DailyQuotaExceeded as e:
+                run.status, run.error = "quota", str(e)
+                resp = None
+                break
+            except BudgetExceeded as e:
+                run.status, run.error = "budget", str(e)
+                resp = None
+                break
+            except LLMError as e:
+                run.status, run.error = "llm_error", f"{type(e).__name__}: {e}"
+                resp = None
+                break
+
+            run.input_tokens += resp.input_tokens
+            run.output_tokens += resp.output_tokens
+            if resp.cached:
+                run.cached_calls += 1
+            else:
+                run.llm_calls += 1
+            # 빈 응답은 모델의 추론 결과가 아니라 전송 단계의 실패(예: MALFORMED_FUNCTION_CALL)일 때가 많다.
+            # 같은 요청을 다시 보낸다. 이 재시도는 단계와 형식 오류로 세지 않는다 (호출 한도에는 포함).
+            if resp.text.strip() or retries >= empty_retries:
+                break
+            retries += 1
+            retry_reasons.append(resp.finish_reason)
+            run.empty_retries += 1
+        if resp is None:
             break
 
-        run.input_tokens += resp.input_tokens
-        run.output_tokens += resp.output_tokens
-        if resp.cached:
-            run.cached_calls += 1
-        else:
-            run.llm_calls += 1
-
         try:
-            act = parse_action(resp.text)
+            act = parse_action(resp.text, tool_names)
         except ProtocolError as e:
             run.format_errors += 1
             consecutive_fmt += 1
             msg = f"FORMAT ERROR: {e}"
-            record(StepLog(step, "format_error", note=str(e), cached=resp.cached),
+            fr = resp.finish_reason
+            extra = f" [finish_reason={fr}]" if fr not in (None, "STOP") else ""
+            record(StepLog(step, "format_error", note=str(e) + extra, cached=resp.cached, finish_reason=fr,
+                           retries=retries, retry_reasons=retry_reasons),
                    resp.text.strip()[:500], json.dumps({"error": msg}, ensure_ascii=False))
             if consecutive_fmt >= max_format_errors:
                 run.status, run.error = "format_errors", f"형식 오류 {consecutive_fmt}회 연속"
@@ -166,7 +196,11 @@ def debug_loop(ws: DebugWorkspace, evidence: Evidence, client, max_steps: int = 
             else:
                 seen_calls[key] = step
             tool_steps.add(step)
-            record(StepLog(step, "tool", act.tool, act.args, cached=resp.cached),
+            if act.normalized:
+                run.normalized_calls += 1
+            record(StepLog(step, "tool", act.tool, act.args,
+                           note="평탄한 호출을 tool 호출로 정규화" if act.normalized else "", cached=resp.cached, finish_reason=resp.finish_reason,
+                           retries=retries, retry_reasons=retry_reasons),
                    _compact({"thought": act.thought, "action": "tool", "tool": act.tool, "args": act.args}),
                    json.dumps(result, ensure_ascii=False))
             continue
@@ -178,13 +212,15 @@ def debug_loop(ws: DebugWorkspace, evidence: Evidence, client, max_steps: int = 
         if problems:
             run.rejected_reports += 1
             note = "; ".join(problems)
-            record(StepLog(step, "report_rejected", note=note, cached=resp.cached),
+            record(StepLog(step, "report_rejected", note=note, cached=resp.cached, finish_reason=resp.finish_reason,
+                           retries=retries, retry_reasons=retry_reasons),
                    _compact({"thought": act.thought, "action": "final", "report": act.report}),
                    json.dumps({"error": "REPORT REJECTED. Fix these and send a corrected final report "
                                         "(or call more tools if you need evidence): " + note},
                               ensure_ascii=False))
             continue
-        record(StepLog(step, "final", cached=resp.cached),
+        record(StepLog(step, "final", cached=resp.cached, finish_reason=resp.finish_reason,
+                       retries=retries, retry_reasons=retry_reasons),
                _compact({"thought": act.thought, "action": "final", "report": act.report}), "{}")
         run.status, run.report = "final", act.report
         break

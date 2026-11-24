@@ -2,6 +2,7 @@
 
 import pytest
 
+from llm.client import is_cacheable
 from llm import (BudgetExceeded, DailyQuotaExceeded, DiskCache, FakeLLM, LLMClient, LLMError,
                  LLMRequest, LLMResponse, LLMTransientError, RateLimiter, RateLimitError)
 
@@ -199,3 +200,47 @@ def test_cache_hit_does_not_use_daily_quota(tmp_path):
     client.generate(LLMRequest(prompt="p"))
     client.generate(LLMRequest(prompt="p"))
     assert limiter.used_today() == 1
+
+
+# ------------------------------------------------------------ 캐시에 넣어도 되는 응답 (v0b에서 확인된 결함)
+# 빈 응답이나 MALFORMED_FUNCTION_CALL을 캐시하면 같은 요청을 다시 보내도 그 실패가 재생되어 재시도가 소용없다.
+@pytest.mark.parametrize("text,finish", [
+    ("", "STOP"),
+    ("   \n", "STOP"),
+    ("", "MALFORMED_FUNCTION_CALL"),
+    ("{\"a\": 1}", "MALFORMED_FUNCTION_CALL"),
+    ("{\"a\": 1", "MAX_TOKENS"),
+])
+def test_빈_응답과_STOP_아닌_응답은_캐시하지_않는다(tmp_path, text, finish):
+    """실패한 응답은 저장되지 않아서 같은 요청을 다시 보내면 제공자를 다시 부른다. 정상 응답은 그 뒤에 캐시된다."""
+    fake = FakeLLM([(text, finish), "good"])
+    client = LLMClient(fake, cache=DiskCache(tmp_path))
+    bad = client.generate(LLMRequest(prompt="p"))
+    assert (bad.text, bad.finish_reason, bad.cached) == (text, finish, False)
+    assert list(tmp_path.iterdir()) == []                  # 디스크에 아무것도 저장되지 않았다 (읽을 때 걸러내는 것과 별개로)
+    again = client.generate(LLMRequest(prompt="p"))
+    assert (again.text, again.cached) == ("good", False) and len(fake.calls) == 2
+    third = client.generate(LLMRequest(prompt="p"))
+    assert (third.text, third.cached) == ("good", True) and len(fake.calls) == 2
+
+
+def test_정상_응답은_계속_캐시된다():
+    """STOP이거나 이유를 모르는(None) 비지 않은 응답은 캐시 대상이다."""
+    assert is_cacheable(LLMResponse(text="x", model="m", finish_reason="STOP"))
+    assert is_cacheable(LLMResponse(text="x", model="m", finish_reason=None))
+    assert not is_cacheable(LLMResponse(text="", model="m", finish_reason="STOP"))
+    assert not is_cacheable(LLMResponse(text="x", model="m", finish_reason="MAX_TOKENS"))
+
+
+def test_이전_버전이_저장한_나쁜_캐시는_미스로_취급하고_덮어쓴다(tmp_path):
+    """이미 디스크에 남은 빈 응답(v0b 실행의 흔적)을 그대로 돌려주지 않고 다시 호출해서 정상 응답으로 덮어쓴다."""
+    cache = DiskCache(tmp_path)
+    fake = FakeLLM(["fresh"])
+    req = LLMRequest(prompt="p")
+    key = req.cache_key(fake.name, fake.default_model)
+    cache.put(key, LLMResponse(text="", model="m", finish_reason="MALFORMED_FUNCTION_CALL").to_dict())
+    client = LLMClient(fake, cache=cache)
+    r = client.generate(req)
+    assert (r.text, r.cached) == ("fresh", False) and client.stats.cache_hits == 0
+    assert LLMResponse.from_dict(cache.get(key)).text == "fresh"
+    assert client.generate(req).cached is True

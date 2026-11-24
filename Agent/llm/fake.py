@@ -35,6 +35,9 @@ class FakeLLM(LLMProvider):
             self._i += 1
         if isinstance(out, Exception):
             raise out
+        finish = "STOP"
+        if isinstance(out, tuple):                 # (텍스트, finish_reason): 잘린 응답 등을 흉내낸다
+            out, finish = out
         return LLMResponse(text=out, model=request.model or self.default_model,
                            input_tokens=len(request.prompt.split()), output_tokens=len(out.split()),
-                           finish_reason="STOP")
+                           finish_reason=finish)

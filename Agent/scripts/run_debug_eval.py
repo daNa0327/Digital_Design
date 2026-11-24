@@ -38,6 +38,10 @@ def main(argv: list | None = None) -> int:
     ap.add_argument("--tb", help="입력 TB (기본: 사람이 쓴 dut/sync_fifo/tb/tb_sync_fifo_sc.v)")
     ap.add_argument("--tb-top", help="TB의 top 모듈 이름 (기본: 카탈로그의 top)")
     ap.add_argument("--max-steps", type=int, default=8)
+    ap.add_argument("--max-output-tokens", type=int, default=4096,
+                    help="응답 한 번의 최대 출력 토큰 (생각 토큰이 여기서 빠지면 본문이 비거나 잘릴 수 있어 넉넉히)")
+    ap.add_argument("--empty-retries", type=int, default=1,
+                    help="빈 응답을 받으면 같은 요청을 다시 보내는 횟수 (단계/형식 오류로 세지 않음, 기본 1, 0이면 끔)")
     ap.add_argument("--near", type=int, default=2, help="정답 줄에서 이만큼 떨어진 것까지 near로 인정")
     ap.add_argument("--out", help="결과 폴더 (기본: runs/dbgeval_<label>_<시각>)")
     ap.add_argument("--report", help="마크다운 리포트 경로 (기본: reports/debug_eval_<dut>_<label>.md)")
@@ -70,7 +74,7 @@ def main(argv: list | None = None) -> int:
 
     est = len(real) * EST_CALLS_PER_BUG
     print(f"DUT {meta['dut']}: 평가 대상 {len(real)}개 (동등 변형 {len(bugs) - len(real)}개 제외)")
-    print(f"입력 TB: {tb} (top {tb_top}), spec {'사용' if spec else '미사용'}, 최대 단계 {a.max_steps}")
+    print(f"입력 TB: {tb} (top {tb_top}), spec {'사용' if spec else '미사용'}, 최대 단계 {a.max_steps}, 최대 출력 토큰 {a.max_output_tokens}")
     print(f"예상 LLM 호출: 약 {est}회 (가정: 변형당 {EST_CALLS_PER_BUG}회, 실측 전). 무료 등급 일일 상한과 비교하세요 (python -m scripts.llm_ping).")
     print(f"결과 폴더: {out}")
     if a.dry_run:
@@ -81,6 +85,9 @@ def main(argv: list | None = None) -> int:
 
     try:
         client = make_client(use_cache=not a.no_cache)
+        if not a.no_cache:
+            print("참고: 캐시를 켠 상태다. 프롬프트가 같은 이전 실행의 응답은 그대로 재생되어 새 표본이 되지 않는다 "
+                  "(실행 간 변동을 보려면 --no-cache).")
     except (ConfigError, LLMError) as e:
         print(f"LLM 설정 오류: {e}")
         return 2
@@ -89,6 +96,7 @@ def main(argv: list | None = None) -> int:
     try:
         report = run_debug_eval(bugs, golden_dir, tb, tb_top, meta["dut"], xsim_runner(), client, out / "work",
                                 dut=meta["dut"], spec_text=spec, max_steps=a.max_steps, near=a.near,
+                                max_output_tokens=a.max_output_tokens, empty_retries=a.empty_retries,
                                 resume=a.resume, progress=lambda s: print(s, flush=True))
     except FileNotFoundError as e:
         print(f"Vivado 도구를 찾지 못했습니다 (PATH 확인): {e}")
@@ -106,7 +114,9 @@ def main(argv: list | None = None) -> int:
     print(f"평가 {s['n_evaluated']}개: 정확한 줄 {pct(s['exact_rate'])}, ±{a.near}줄 이내 {pct(s['located_rate'])}, "
           f"파일 {pct(s['file_accuracy'])}, 보고서 {pct(s['report_rate'])}")
     print(f"LLM 호출 {s['llm_calls']}회 (캐시 {s['cached_calls']}회), 형식 오류율 {pct(s['format_error_rate'])}, "
-          f"거부된 보고서 {s['rejected_reports']}개  ({time.time() - t0:.0f}초)")
+          f"거부된 보고서 {s['rejected_reports']}개, STOP 아닌 종료 {s['non_stop_steps']}회  ({time.time() - t0:.0f}초)")
+    print(f"평탄한 도구 호출 정규화 {s['normalized_calls']}회")
+    print(f"빈 응답 재시도 {s['empty_retries']}회 (그중 정상 응답을 받아 이어간 것 {s['empty_retries_recovered']}회)")
     print(f"결과: {out / 'results.json'}\n리포트: {rp}")
     if report.aborted_reason:
         print(f"\n중간에 멈춤: {report.aborted_reason}\n같은 명령에 --resume을 붙여 한도가 초기화된 뒤 이어서 실행하세요.")
