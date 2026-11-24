@@ -112,6 +112,14 @@ def test_없는_단계를_인용하면_거부():
     assert validate_report(r, RTL_FILES, n_steps_done=None) == []      # 단계 수를 모르면 구조만 본다
 
 
+def test_valid_steps가_있으면_그_집합만_근거로_인정():
+    """도구를 호출한 단계 집합을 주면, 범위 안이어도 그 집합에 없는 단계(형식 오류로 날린 단계)는 근거가 될 수 없다."""
+    r = good_report(evidence=[{"step": 2, "observation": "o"}])
+    assert validate_report(r, RTL_FILES, n_steps_done=3) == []                  # 범위만 보면 통과
+    assert any("도구를 호출한 단계가 아니다" in p for p in validate_report(r, RTL_FILES, valid_steps={1, 3}))
+    assert validate_report(r, RTL_FILES, valid_steps={2}) == []
+
+
 @pytest.mark.parametrize("patch", [
     {"verdict": "maybe"}, {"confidence": "sure"}, {"summary": ""}, {"root_cause": "  "},
     {"fix_proposal_ids": "1"}, {"fix_proposal_ids": [1, "2"]},

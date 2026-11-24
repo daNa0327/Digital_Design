@@ -106,8 +106,13 @@ def parse_action(text: str) -> Action:
 # ---------------------------------------------------------------------------------------------
 # 최종 보고서 검증 (구조만. 증거가 실제로 있었는지는 루프가 확인한다)
 # ---------------------------------------------------------------------------------------------
-def validate_report(report: dict[str, Any], rtl_files: list[str], n_steps_done: int | None = None) -> list[str]:
-    """최종 보고서의 문제 목록. 비어 있으면 통과."""
+def validate_report(report: dict[str, Any], rtl_files: list[str], n_steps_done: int | None = None,
+                    valid_steps: set[int] | None = None) -> list[str]:
+    """최종 보고서의 문제 목록. 비어 있으면 통과.
+
+    valid_steps: 도구를 실제로 호출한 단계 번호 집합. 주면 근거의 step이 여기에 있어야 한다 (형식 오류로 날린 단계는 근거가 될 수 없음).
+    n_steps_done: valid_steps가 없을 때 1..n 범위만 확인한다.
+    """
     p: list[str] = []
     v = report.get("verdict")
     if v not in VERDICTS:
@@ -136,7 +141,9 @@ def validate_report(report: dict[str, Any], rtl_files: list[str], n_steps_done: 
                 if (not isinstance(e, dict) or not isinstance(e.get("step"), int) or isinstance(e.get("step"), bool)
                         or not isinstance(e.get("observation"), str) or not e["observation"].strip()):
                     p.append(f"evidence[{i}]는 {{\"step\": 정수, \"observation\": 문자열}} 형식이어야 한다.")
-                elif n_steps_done is not None and not (1 <= e["step"] <= n_steps_done):
+                elif valid_steps is not None and e["step"] not in valid_steps:
+                    p.append(f"evidence[{i}].step={e['step']}은 도구를 호출한 단계가 아니다 (도구를 호출한 단계: {sorted(valid_steps)}).")
+                elif valid_steps is None and n_steps_done is not None and not (1 <= e["step"] <= n_steps_done):
                     p.append(f"evidence[{i}].step={e['step']}은 실제로 수행한 단계(1..{n_steps_done})가 아니다.")
     ids = report.get("fix_proposal_ids", [])
     if not isinstance(ids, list) or any((not isinstance(x, int) or isinstance(x, bool)) for x in ids):
@@ -268,4 +275,7 @@ def build_prompt(initial: str, turns: list[Turn], steps_left: int) -> str:
     body = [initial]
     body += [render_turn(t) for t in turns]
     body.append(f"[{steps_left} step(s) left. Reply with exactly one JSON object.]")
+    if steps_left <= 1:
+        body.append('This is your LAST step. Do not call another tool: reply now with action "final". '
+                    'If the evidence is insufficient, use verdict "unknown" and say what is missing.')
     return "\n\n".join(body)
