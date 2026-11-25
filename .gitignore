@@ -1,9 +1,23 @@
-# 숨김폴더
+# ===== 개인 / 로컬 전용 =====
+CLAUDE.local.md
+.claude/settings.local.json
+
+# ===== 시크릿 (API 키) =====
+.env
+.env.*
+!.env.example
+*.key
+
+# ===== 임시 / 빌드 폴더 =====
 build/
 gitignore/
-*.bat
 
-# --- Vivado / xsim 생성물 ---
+# ===== 배치 파일 =====
+# 개인 경로가 들어간 .bat은 무시하고, 배포용 실행 파일만 추적한다.
+*.bat
+!run_agent.bat
+
+# ===== Vivado / xsim 생성물 =====
 xsim.dir/
 .Xil/
 *.wdb
@@ -11,18 +25,21 @@ xsim.dir/
 *.pb
 xsim_[0-9]*
 webtalk*
+xvlog.log
+xelab.log
+xsim.log
+xvlog.pb
+xelab.pb
 
-# --- 실행 결과 (runs/ 아래만 무시) ---
-**/runs/**/*.log
-**/runs/**/*.vcd
-**/runs/**/*.out
-Agent/runs/
+# ===== Icarus / GTKWave 생성물 =====
+*.vvp
+*.vcd
+*.gtkw
 
-# --- 시크릿 (API 키) ---
-.env
-*.key
+# ===== 실행 결과 (경로 깊이와 상관없이 runs/ 전체) =====
+runs/
 
-# --- Python (Phase 1부터) ---
+# ===== Python =====
 __pycache__/
 *.pyc
 .venv/
