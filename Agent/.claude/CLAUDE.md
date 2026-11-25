@@ -38,10 +38,10 @@ sim/      runner.py(run_tool, 타임아웃/프로세스 트리 종료), xsim 어
 llm/      base, client, config, gemini, cache, limiter, fake
 scripts/  run_eval, run_debug_eval, verify_fixes, show_proposals, gen_tb, llm_ping,
           compare_eval, make_baseline_report, make_rtl_summary, show_rtl
-dut/      sync_fifo/, spi/ (각 rtl/, tb/, spec.md)
-bugs/     sync_fifo/bugs.json, spi/bugs.json (변형 카탈로그)
+dut/      sync_fifo/, spi/, uart/ (각 rtl/, tb/, spec.md)
+bugs/     sync_fifo/bugs.json, spi/bugs.json, uart/bugs.json (변형 카탈로그)
 docs/     NOTES_p0.md ~ NOTES_ps8.md (Phase별 설계·결과 기록)
-tests/    pytest (전체 595개가 기대값)
+tests/    pytest (전체 598개가 기대값)
 runs/     실행 결과(results.json, work/ 등)
 ```
 
@@ -141,6 +141,6 @@ sync_fifo에서 튜닝한 Agent를 **그대로** SPI에 돌려야 일반화 성�
 ---
 
 ## 8. 테스트
-- `pytest -q` 전체 595개가 기대값(SPI 추가 후). `tests/test_spi_dut.py`는 9개(Icarus 필요).
+- `pytest -q` 전체 598개가 기대값(UART 추가 후). `tests/test_spi_dut.py` 9개, `tests/test_uart_dut.py` 3개(Icarus 필요).
 - Icarus가 없는 환경에서는 일부 테스트가 건너뛰거나 실패할 수 있다. 실패하면 환경 문제인지 코드 문제인지 구분해서 보고한다.
 - `sim` 패키지(`sim/runner.py`)가 없으면 `core/compile_gate.py` import가 실패한다. 프로젝트 루트에서 실행한다.
