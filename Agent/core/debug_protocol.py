@@ -201,7 +201,12 @@ def _tool_doc(specs: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+_SIM_RULE = """
+7. After propose_fix, call rerun_sim with the proposal id to simulate the patched design with the original testbench. If it still FAILs, your root cause is probably wrong or incomplete: compare first_failures with the original failures and reconsider before reporting. List a proposal in fix_proposal_ids only if rerun_sim returned PASS."""
+
+
 def build_system_prompt(specs: list[dict[str, Any]]) -> str:
+    sim_rule = _SIM_RULE if any(sp.get("name") == "rerun_sim" for sp in specs) else ""
     return f"""You are a Verilog RTL debugging agent. A self-checking testbench FAILED on a design under test (DUT).
 Find the root cause using the tools, then report. You never modify files: you only read evidence and propose fixes.
 
@@ -214,7 +219,7 @@ Find the root cause using the tools, then report. You never modify files: you on
    - unknown: the evidence is insufficient. Say what is missing. Do NOT guess.
 4. Never conclude from a value you have not seen. Signal values that are x or whose status is not ok need cross-checking.
 5. The line you report must be the line that CAUSES the wrong behavior, not the line where the symptom is first visible.
-6. propose_fix only accepts RTL files. If you believe the testbench is wrong, report tb_issue instead of changing it.
+6. propose_fix only accepts RTL files. If you believe the testbench is wrong, report tb_issue instead of changing it.{sim_rule}
 
 ## Reply format
 Every reply is exactly ONE JSON object, nothing else of substance outside it.

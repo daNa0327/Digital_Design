@@ -41,10 +41,13 @@ from core.debug_loop import DebugRun, StepLog, debug_loop
 from core.debug_protocol import evidence_from_log
 from core.debug_tools import workspace_from_files
 from core.evaluator import Judged, Runner
+from core.fix_verify import FIX_CATEGORIES, check_fix, make_sim_fn
 
 CATEGORIES = ("exact", "near", "wrong_line", "wrong_file", "not_rtl_bug", "no_report")
 DONE_STATUSES = ("final", "max_steps", "format_errors")     # 이어하기에서 다시 실행하지 않는 종료 상태
 NEAR = 2
+# "실패 증거를 더 모으는" 도구: 로그, TB, 파형. read_rtl/search_rtl/list_signals는 코드나 목록을 볼 뿐이라 제외한다.
+EVIDENCE_TOOLS = ("get_log_snippet", "read_tb", "read_vcd_signal", "sample_signals")
 
 
 @dataclass(frozen=True)
@@ -93,15 +96,16 @@ class Case:
     run: dict[str, Any] | None = None  # DebugRun.to_dict()
     score: dict[str, Any] | None = None
     resumed: bool = False              # 이전 실행에서 가져온 케이스
+    fix: dict[str, Any] | None = None  # 7-5: 수정안 검증 결과 (fix_verify.FixResult.to_dict() + agent_sims)
 
     def to_dict(self) -> dict[str, Any]:
         return {"bug_id": self.bug_id, "type": self.type, "outcome": self.outcome, "sim_status": self.sim_status,
-                "truth": self.truth, "run": self.run, "score": self.score}
+                "truth": self.truth, "run": self.run, "score": self.score, "fix": self.fix}
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Case":
         return cls(d["bug_id"], d["type"], d["outcome"], d.get("sim_status"), d.get("truth"), d.get("run"),
-                   d.get("score"), resumed=True)
+                   d.get("score"), resumed=True, fix=d.get("fix"))
 
 
 @dataclass
@@ -164,7 +168,27 @@ def summarize_cases(cases: list[Case]) -> dict[str, Any]:
         b = calib.setdefault(k, {"n": 0, "located": 0})
         b["n"] += 1
         b["located"] += c.score["category"] in ("exact", "near")
+    usage: dict[str, int] = {}
+    for c in ev:
+        for st in c.run.get("steps", []):
+            if st.get("kind") == "tool" and st.get("tool"):
+                usage[st["tool"]] = usage.get(st["tool"], 0) + 1
+    evidence_cases = [c.bug_id for c in ev
+                      if any(st.get("tool") in EVIDENCE_TOOLS for st in c.run.get("steps", []) if st.get("kind") == "tool")]
+    fixed = [c for c in ev if c.fix]
+    fix_cat = {k: 0 for k in FIX_CATEGORIES}
+    for c in fixed:
+        fix_cat[c.fix["category"]] += 1
+    # Agent가 rerun_sim으로 직접 확인한 횟수와, 그 결과가 사후 검증과 일치했는지
+    agent_sims = sum(len(c.fix.get("agent_sims") or {}) for c in fixed)
     return {
+        "tool_usage": dict(sorted(usage.items(), key=lambda kv: (-kv[1], kv[0]))),
+        "evidence_tool_cases": evidence_cases,
+        "n_fix_verified": len(fixed), "fix_categories": fix_cat, "agent_sim_runs": agent_sims,
+        "fix_pass_rate": (fix_cat["fixed_golden"] + fix_cat["fixed_pass"]) / len(fixed) if fixed else None,
+        "fix_golden_rate": fix_cat["fixed_golden"] / len(fixed) if fixed else None,
+        "located_but_not_fixed": [c.bug_id for c in fixed if c.score["category"] in ("exact", "near")
+                                  and c.fix["category"] not in ("fixed_golden", "fixed_pass")],
         "n_cases": len(cases), "n_evaluated": n,
         "n_not_failed": sum(c.outcome == "not_failed" for c in cases),
         "n_not_run": sum(c.outcome == "not_run" for c in cases),
@@ -227,6 +251,7 @@ def run_debug_eval(bugs: list[Bug], golden_rtl_dir: str | Path, tb_path: str | P
                    dut_top: str, runner: Runner, client, work_root: str | Path, dut: str = "dut",
                    spec_text: str | None = None, max_steps: int = 8, near: int = NEAR, resume: bool = False,
                    max_output_tokens: int | None = 4096, empty_retries: int = 1,
+                   sim_tool: bool = False, verify_fixes: bool = False,
                    vcd_loader: Callable[[str | None], Any] = default_vcd_loader,
                    progress: Callable[[str], None] | None = None) -> DebugEvalReport:
     say = progress or (lambda s: None)
@@ -267,6 +292,8 @@ def run_debug_eval(bugs: list[Bug], golden_rtl_dir: str | Path, tb_path: str | P
         ws = workspace_from_files(sorted(applied.rtl_dir.glob("*.v")), [tb_path], j.xsim_stdout,
                                   vcd_tools=vcd_loader(j.vcd_path))
         ev = evidence_from_log(dut_top, j.status, j.tb_verdict, ws.log, ws.list_files(), spec_text=spec_text)
+        if sim_tool:        # Agent가 수정안을 원본 TB로 재시뮬레이션해 볼 수 있다 (rerun_sim 도구)
+            ws.sim = make_sim_fn(runner, [tb_path], tb_top, root / bug.id / "agent_sim")
         say("  Agent 실행")
         run: DebugRun = debug_loop(ws, ev, client, max_steps=max_steps, max_output_tokens=max_output_tokens,
                                    empty_retries=empty_retries,
@@ -276,6 +303,15 @@ def run_debug_eval(bugs: list[Bug], golden_rtl_dir: str | Path, tb_path: str | P
         case = Case(bug.id, bug.type, "evaluated", j.status, truth=vars(truth), run=run.to_dict(),
                     score={"category": sc.category, "verdict": sc.verdict, "file_ok": sc.file_ok,
                            "line_delta": sc.line_delta, "confidence": sc.confidence})
+        if verify_fixes and run.status not in ("quota", "budget", "llm_error"):
+            say("  수정안 검증")
+            golden_rtl = {f"rtl/{p.name}": p.read_text(encoding="utf-8", errors="replace")
+                          for p in sorted(golden_dir.glob("*.v"))}
+            fx = check_fix(run.report, run.proposals, ws.rtl, golden_rtl,
+                           make_sim_fn(runner, [tb_path], tb_top, root / bug.id / "verify")).to_dict()
+            fx["agent_sims"] = {str(i): r.get("status") for i, r in ws.sim_results.items()}
+            case.fix = fx
+            say(f"  수정안: {fx['category']}")
         if run.status in ("quota", "budget", "llm_error"):
             # 한도 문제로 끝난 케이스는 저장하되 이어하기에서 다시 실행한다. 이후 변형은 실행하지 않는다.
             aborted = True
@@ -332,6 +368,22 @@ def render_markdown(report: DebugEvalReport, label: str = "") -> str:
           f"| 빈 응답 재시도 (보냄 / 단계를 이어간 횟수) | {s['empty_retries']} / {s['empty_retries_recovered']} |",
           f"| 평탄한 도구 호출 정규화 (형식 오류였을 호출) | {s['normalized_calls']} |",
           f"| 토큰 입력 / 출력 | {s['input_tokens']} / {s['output_tokens']} |", ""]
+    if s["tool_usage"]:
+        L += ["### 도구 사용", "", "| 도구 | 호출 수 |", "|---|---|"] + [f"| {k} | {v} |" for k, v in s["tool_usage"].items()]
+        L += ["", f"로그·TB·파형 조회(`{'`, `'.join(EVIDENCE_TOOLS)}`)를 한 번이라도 쓴 케이스: "
+                  f"{len(s['evidence_tool_cases'])}/{s['n_evaluated']}. 0에 가까우면 이 평가는 실패 시뮬레이션 디버깅이 아니라 "
+                  "RTL 코드 리뷰 능력을 재고 있다.", ""]
+    if s["n_fix_verified"]:
+        fc = s["fix_categories"]
+        L += ["### 수정안 검증 (7-5)", "",
+              f"원본 사람 TB로 재시뮬레이션한 케이스 {s['n_fix_verified']}개. Agent가 rerun_sim을 직접 쓴 횟수 {s['agent_sim_runs']}.", "",
+              "| 분류 | 개수 | 뜻 |", "|---|---|---|",
+              f"| fixed_golden | {fc['fixed_golden']} | PASS, 골든 RTL과 같음 (원래 코드로 복원) |",
+              f"| fixed_pass | {fc['fixed_pass']} | PASS이지만 골든과 다름 (대안 수정이거나 TB 구멍 — diff를 직접 확인) |",
+              f"| still_fail | {fc['still_fail']} | 적용해도 FAIL |",
+              f"| unverified | {fc['unverified']} | 적용/시뮬레이션 실패 |",
+              f"| no_fix | {fc['no_fix']} | 보고서가 수정안을 지목하지 않음 |", "",
+              f"위치는 맞혔는데(±줄 이내) 수정안이 없거나 실패한 케이스: {', '.join(s['located_but_not_fixed']) or '없음'}", ""]
     L += ["### 결과 분류", "", "| 분류 | 개수 |", "|---|---|"] + [f"| {k} | {v} |" for k, v in s["categories"].items()] + [""]
     if s["by_type"]:
         L += ["### 버그 유형별", "", "| 유형 | 케이스 | ±줄 이내 | 정확 |", "|---|---|---|---|"]
@@ -342,18 +394,19 @@ def render_markdown(report: DebugEvalReport, label: str = "") -> str:
         if s["high_conf_wrong"]:
             L += ["", f"⚠️ 확신도 high인데 틀린 케이스: {', '.join(s['high_conf_wrong'])}"]
         L.append("")
-    L += ["## 케이스별", "", "| 버그 | 유형 | 정답 | Agent | 분류 | 상태 | 단계 | 호출 |", "|---|---|---|---|---|---|---|---|"]
+    L += ["## 케이스별", "", "| 버그 | 유형 | 정답 | Agent | 분류 | 수정안 | 상태 | 단계 | 호출 |", "|---|---|---|---|---|---|---|---|---|"]
     for c in report.cases:
         if c.outcome != "evaluated":
-            L.append(f"| {c.bug_id} | {c.type} | - | - | {c.outcome} | {c.sim_status or '-'} | - | - |")
+            L.append(f"| {c.bug_id} | {c.type} | - | - | {c.outcome} | - | {c.sim_status or '-'} | - | - |")
             continue
         loc = (c.run["report"] or {}).get("location") or {}
         got = f"{loc.get('file', '-')}:{loc.get('line', '-')}" if c.run["report"] else "-"
         L.append(f"| {c.bug_id} | {c.type} | {c.truth['file']}:{c.truth['line']} | {got} | {c.score['category']} | "
-                 f"{c.run['status']} | {c.run['n_steps']} | {c.run['llm_calls']} |")
+                 f"{c.fix['category'] if c.fix else '-'} | {c.run['status']} | {c.run['n_steps']} | {c.run['llm_calls']} |")
     L += ["", "## 해석할 때 주의", "",
           f"- 케이스가 {s['n_evaluated']}개뿐이고 버그는 한 줄 치환 단일 버그다. 비율은 통계가 아니라 이 세트에서의 관찰이다.",
           "- 정답 줄은 패치가 적용된 줄이다. 원인과 증상이 다른 줄이면 증상 줄을 지목해도 `near`/`wrong_line`이 된다.",
           "- 사람 TB가 쓴 신호 이름, 기대값 계산이 Agent에게 보이므로 LLM이 만든 TB의 실패에서는 결과가 다를 수 있다.",
+          "- 수정안 PASS는 \"사람 TB가 못 잡는 오류가 없다\"는 뜻이지 수정이 맞다는 증명이 아니다. fixed_pass는 diff를 직접 본다.",
           "- 같은 변형 세트로 TB 평가와 Agent 평가를 모두 했다. 세트에 맞춰 프롬프트를 고치면 이 수치는 낙관적이 된다."]
     return "\n".join(L) + "\n"

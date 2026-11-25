@@ -23,7 +23,7 @@ import difflib
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any
+from typing import Any, Callable
 
 from core.rtl_analyzer import strip_comments
 from core.vcd_tools import TOOL_SPECS as VCD_SPECS
@@ -33,6 +33,7 @@ from core.vcd_tools import dispatch as vcd_dispatch
 MAX_LOG_LINES = 80
 MAX_SRC_LINES = 120
 MAX_SEARCH_RESULTS = 30
+MAX_SIM_RUNS = 3                # rerun_sim은 한 실행(케이스)에서 최대 이만큼
 MAX_LINE_CHARS = 200
 MAX_PROPOSALS = 5
 
@@ -122,6 +123,22 @@ def _first_changed_line(text: str, idx: int, find: str, replace: str) -> int:
     return text.count("\n", 0, idx + d) + 1
 
 
+class FixApplyError(ValueError):
+    """수정안을 RTL에 적용할 수 없음 (파일 없음, find가 0번 또는 여러 번 나타남)."""
+
+
+def apply_proposal(rtl: dict[str, str], file: str, find: str, replace: str) -> dict[str, str]:
+    """수정안을 RTL 복사본에 적용해 새 {논리 이름: 텍스트}를 돌려준다. 원본 dict는 바꾸지 않는다."""
+    if file not in rtl:
+        raise FixApplyError(f"RTL 파일이 없음: {file}")
+    n = rtl[file].count(find) if find else 0
+    if n != 1:
+        raise FixApplyError(f"find가 {n}번 나타남 (정확히 1번이어야 함)")
+    out = dict(rtl)
+    out[file] = rtl[file].replace(find, replace, 1)
+    return out
+
+
 @dataclass
 class DebugWorkspace:
     rtl: dict[str, str]                       # 논리 이름 -> 소스 텍스트 (예: "rtl/fifo_ctrl.v")
@@ -129,6 +146,10 @@ class DebugWorkspace:
     log: str                                  # 이미 sanitize된 xsim 로그
     vcd: VcdTools | None = None
     proposals: list[Proposal] = field(default_factory=list)
+    # 7-5: 수정안을 적용한 RTL({논리 이름: 텍스트})을 원본 TB로 시뮬레이션하는 함수. None이면 rerun_sim 도구가 없다.
+    sim: Callable[[dict[str, str]], dict[str, Any]] | None = None
+    sim_runs: int = 0
+    sim_results: dict[int, dict[str, Any]] = field(default_factory=dict)   # 제안 id -> 시뮬레이션 결과
 
     def __post_init__(self) -> None:
         self.rtl = {k: _norm(v) for k, v in self.rtl.items()}
@@ -261,6 +282,23 @@ class DebugWorkspace:
         self.proposals.append(p)
         return {"proposal_id": p.id, "line": line, "diff": diff}
 
+    # ---- 수정안 재시뮬레이션 (7-5)
+    def rerun_sim(self, proposal_id: int) -> dict[str, Any]:
+        """저장된 수정안을 원본 RTL 복사본에 적용하고 원본 TB로 시뮬레이션한다. 같은 제안은 다시 돌리지 않는다."""
+        p = next((x for x in self.proposals if x.id == proposal_id), None)
+        if p is None:
+            return {"error": f"제안 {proposal_id}이 없음. propose_fix로 먼저 저장하라.",
+                    "available": [x.id for x in self.proposals]}
+        if p.id in self.sim_results:
+            return {**self.sim_results[p.id], "cached": True}
+        if self.sim_runs >= MAX_SIM_RUNS:
+            return {"error": f"rerun_sim은 한 번의 분석에서 최대 {MAX_SIM_RUNS}번이다. 지금까지의 결과로 결론을 내려라."}
+        patched = apply_proposal(self.rtl, p.file, p.find, p.replace)
+        self.sim_runs += 1
+        res = {"proposal_id": p.id, **self.sim(patched)}
+        self.sim_results[p.id] = res
+        return res
+
 
 # ---------------------------------------------------------------------------------------------
 # 작업 공간 만들기
@@ -311,7 +349,16 @@ _DEBUG_SPECS: list[dict[str, Any]] = [
      "input_schema": {"type": "object", "required": ["file", "find", "replace"], "properties": {
          "file": {"type": "string"}, "find": {"type": "string"}, "replace": {"type": "string"},
          "rationale": {"type": "string"}}}},
+
 ]
+
+_SIM_SPEC: dict[str, Any] = {
+    "name": "rerun_sim",
+    "description": "저장한 수정안(proposal_id)을 원본 RTL의 복사본에 적용하고 **원본 TB로** 다시 시뮬레이션한다 (TB는 바뀌지 않는다). "
+                   "PASS/FAIL, 불일치 수, 처음 실패한 검사를 돌려준다. 한 번의 분석에서 최대 3번이고 한 번이 한 단계를 쓴다. "
+                   "수정안이 맞는지 보고하기 전에 확인하는 데 쓴다.",
+    "input_schema": {"type": "object", "required": ["proposal_id"], "properties": {"proposal_id": {"type": "integer"}}},
+}
 
 
 def tool_specs(ws: DebugWorkspace) -> list[dict[str, Any]]:
@@ -319,6 +366,8 @@ def tool_specs(ws: DebugWorkspace) -> list[dict[str, Any]]:
     specs = list(_DEBUG_SPECS)
     if ws.vcd is not None:
         specs += VCD_SPECS
+    if ws.sim is not None:
+        specs.append(_SIM_SPEC)
     return specs
 
 
