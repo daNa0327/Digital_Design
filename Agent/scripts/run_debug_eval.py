@@ -15,7 +15,7 @@ import sys
 import time
 from pathlib import Path
 
-from core.bugs import load_catalog
+from core.bugs import default_human_tb, load_catalog
 from core.debug_eval import render_markdown, run_debug_eval
 from core.evaluator import xsim_runner
 from llm.base import LLMError
@@ -32,10 +32,11 @@ def latest_out(root: Path, label: str) -> Path | None:
 
 def main(argv: list | None = None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--catalog", default=str(ROOT / "bugs" / "sync_fifo" / "bugs.json"))
+    ap.add_argument("--dut", default="sync_fifo", help="평가할 DUT 이름 (기본 카탈로그: bugs/<dut>/bugs.json)")
+    ap.add_argument("--catalog", help="카탈로그 경로 (기본: bugs/<dut>/bugs.json)")
     ap.add_argument("--only", nargs="*", help="id에 이 문자열이 포함된 변형만 실행")
     ap.add_argument("--label", default="human", help="결과 폴더/리포트 이름에 쓸 라벨 (기본: human)")
-    ap.add_argument("--tb", help="입력 TB (기본: 사람이 쓴 dut/sync_fifo/tb/tb_sync_fifo_sc.v)")
+    ap.add_argument("--tb", help="입력 TB (기본: 사람이 쓴 dut/<dut>/tb/tb_<dut>_sc.v)")
     ap.add_argument("--tb-top", help="TB의 top 모듈 이름 (기본: 카탈로그의 top)")
     ap.add_argument("--max-steps", type=int, default=8)
     ap.add_argument("--max-output-tokens", type=int, default=4096,
@@ -54,13 +55,14 @@ def main(argv: list | None = None) -> int:
     ap.add_argument("--dry-run", action="store_true", help="실행하지 않고 계획과 예상 호출 수만 출력")
     a = ap.parse_args(argv)
 
+    a.catalog = a.catalog or str(ROOT / "bugs" / a.dut / "bugs.json")
     meta = json.loads(Path(a.catalog).read_text(encoding="utf-8"))
     bugs = load_catalog(a.catalog)
     if a.only:
         bugs = [b for b in bugs if any(s in b.id for s in a.only)]
     real = [b for b in bugs if not b.equivalent]
     golden_dir = ROOT / meta["golden_rtl"]
-    tb = Path(a.tb) if a.tb else golden_dir.parent / "tb" / "tb_sync_fifo_sc.v"
+    tb = Path(a.tb) if a.tb else default_human_tb(golden_dir, meta["dut"])
     tb_top = a.tb_top or meta["top"]
     spec_path = golden_dir.parent / "spec.md"
     spec = spec_path.read_text(encoding="utf-8") if (spec_path.is_file() and not a.no_spec) else None
@@ -97,7 +99,7 @@ def main(argv: list | None = None) -> int:
 
     t0 = time.time()
     try:
-        report = run_debug_eval(bugs, golden_dir, tb, tb_top, meta["dut"], xsim_runner(), client, out / "work",
+        report = run_debug_eval(bugs, golden_dir, tb, tb_top, meta.get("dut_top", meta["dut"]), xsim_runner(), client, out / "work",
                                 dut=meta["dut"], spec_text=spec, max_steps=a.max_steps, near=a.near,
                                 max_output_tokens=a.max_output_tokens, empty_retries=a.empty_retries,
                                 sim_tool=not a.no_sim_tool, verify_fixes=not a.no_verify_fixes,

@@ -14,7 +14,7 @@ import sys
 import time
 from pathlib import Path
 
-from core.bugs import load_catalog
+from core.bugs import default_human_tb, load_catalog
 from core.compile_gate import tb_top_of
 from core.evaluator import evaluate, xsim_runner
 
@@ -31,9 +31,11 @@ def resolve_run(args, meta: dict, root: Path):
     golden_dir = root / meta["golden_rtl"]
     stamp = time.strftime("%Y%m%d_%H%M%S")
     if not args.tb:
-        tb = golden_dir.parent / "tb" / "tb_sync_fifo_sc.v"
+        tb = default_human_tb(golden_dir, meta["dut"])
         top = args.tb_top or meta["top"]
-        out = Path(args.out) if args.out else root / "runs" / f"eval_{stamp}"
+        # sync_fifo 외 DUT는 runs/eval_* 패턴을 피한다 (make_baseline_report가 eval_*의 최신을 sync_fifo 기준선으로 씀)
+        prefix = "eval" if meta["dut"] == "sync_fifo" else f"dut_{meta['dut']}_eval"
+        out = Path(args.out) if args.out else root / "runs" / f"{prefix}_{stamp}"
         return golden_dir, tb, top, out
     tb = Path(args.tb)
     if not tb.is_file():
@@ -48,14 +50,16 @@ def resolve_run(args, meta: dict, root: Path):
 
 def main(argv: list | None = None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--catalog", default=str(ROOT / "bugs" / "sync_fifo" / "bugs.json"))
+    ap.add_argument("--dut", default="sync_fifo", help="평가할 DUT 이름 (기본 카탈로그: bugs/<dut>/bugs.json)")
+    ap.add_argument("--catalog", help="카탈로그 경로 (기본: bugs/<dut>/bugs.json)")
     ap.add_argument("--only", nargs="*", help="id에 이 문자열이 포함된 변형만 실행")
     ap.add_argument("--out", help="결과 폴더 (기본: runs/eval_<시각>, --tb를 쓰면 runs/tbeval_<label>_<시각>)")
-    ap.add_argument("--tb", help="평가할 TB 파일 (기본: 사람이 쓴 dut/sync_fifo/tb/tb_sync_fifo_sc.v)")
+    ap.add_argument("--tb", help="평가할 TB 파일 (기본: 사람이 쓴 dut/<dut>/tb/tb_<dut>_sc.v)")
     ap.add_argument("--tb-top", help="TB의 top 모듈 이름 (--tb를 쓰면 코드에서 자동으로 읽음)")
     ap.add_argument("--label", help="결과 폴더 이름에 쓸 라벨 (기본: TB 파일 이름)")
     args = ap.parse_args(argv)
 
+    args.catalog = args.catalog or str(ROOT / "bugs" / args.dut / "bugs.json")
     meta = json.loads(Path(args.catalog).read_text(encoding="utf-8"))
     bugs = load_catalog(args.catalog)
     if args.only:

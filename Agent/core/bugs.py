@@ -70,6 +70,17 @@ def load_catalog(path: str | Path) -> list[Bug]:
     return bugs
 
 
+def default_human_tb(golden_rtl_dir: str | Path, dut: str) -> Path:
+    """사람이 쓴 self-checking TB의 기본 경로: <골든 RTL의 부모>/tb/tb_<dut>_sc.v.
+
+    예전 이름(`tb_sync_fifo_sc.v`)만 있는 폴더는 그 파일을 쓴다 (기존 sync_fifo 폴더와의 호환).
+    """
+    tb_dir = Path(golden_rtl_dir).parent / "tb"
+    named = tb_dir / f"tb_{dut}_sc.v"
+    legacy = tb_dir / "tb_sync_fifo_sc.v"
+    return named if (named.is_file() or not legacy.is_file()) else legacy
+
+
 def _read(p: Path) -> str:
     return p.read_text(encoding="utf-8", errors="replace")      # 줄바꿈은 \n으로 통일됨
 

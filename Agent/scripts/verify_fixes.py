@@ -12,21 +12,23 @@ import json
 import sys
 from pathlib import Path
 
-from core.bugs import apply_bug, load_catalog
+from core.bugs import apply_bug, default_human_tb, load_catalog
 from core.fix_verify import FIX_CATEGORIES, check_fix, make_sim_fn
 from scripts.run_debug_eval import ROOT, latest_out
 
 
 def main(argv: list | None = None, runner=None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--catalog", default=str(ROOT / "bugs" / "sync_fifo" / "bugs.json"))
+    ap.add_argument("--dut", default="sync_fifo", help="DUT 이름 (기본 카탈로그: bugs/<dut>/bugs.json)")
+    ap.add_argument("--catalog", help="카탈로그 경로 (기본: bugs/<dut>/bugs.json)")
     ap.add_argument("--label", default="human", help="--results가 없을 때 가장 최근 runs/dbgeval_<label>_* 사용")
     ap.add_argument("--results", help="평가 결과 폴더 (cases/*.json이 있는 곳)")
-    ap.add_argument("--tb", help="원본 TB (기본: 사람이 쓴 dut/sync_fifo/tb/tb_sync_fifo_sc.v)")
+    ap.add_argument("--tb", help="원본 TB (기본: 사람이 쓴 dut/<dut>/tb/tb_<dut>_sc.v)")
     ap.add_argument("--tb-top", help="TB top 모듈 (기본: 카탈로그의 top)")
     ap.add_argument("--report", help="마크다운 경로 (기본: reports/fix_check_<dut>_<label>.md)")
     a = ap.parse_args(argv)
 
+    a.catalog = a.catalog or str(ROOT / "bugs" / a.dut / "bugs.json")
     meta = json.loads(Path(a.catalog).read_text(encoding="utf-8"))
     bugs = {b.id: b for b in load_catalog(a.catalog)}
     res = Path(a.results) if a.results else latest_out(ROOT, a.label)
@@ -36,7 +38,7 @@ def main(argv: list | None = None, runner=None) -> int:
         print(f"케이스 폴더를 찾지 못했습니다: {res or f'runs/dbgeval_{a.label}_*'} (work/cases 또는 cases 필요)")
         return 2
     golden_dir = ROOT / meta["golden_rtl"]
-    tb = Path(a.tb) if a.tb else golden_dir.parent / "tb" / "tb_sync_fifo_sc.v"
+    tb = Path(a.tb) if a.tb else default_human_tb(golden_dir, meta["dut"])
     tb_top = a.tb_top or meta["top"]
     if not tb.is_file():
         print(f"TB 파일이 없습니다: {tb}")
