@@ -171,7 +171,7 @@ ERROR: [XSIM 43-4099] ... Module sync_fifo doesn't have a timescale but at least
 | async FIFO의 self-checking TB | ⏸ | 아직 없음. `empty` 비대칭 의심은 계속 보류 |
 | 어댑터의 기본 timescale 옵션 | ⏸ | 지금은 TB에서 지시문을 빼는 것으로 회피 |
 | LLM이 만든 TB의 평가 | ✅ | Phase 6에서 측정: 골든 PASS, mutation score 100% (1회 생성, `docs/NOTES_ps6.md`) |
-| Agent의 원인 위치 정확도 | ❓ | Phase 7에서 `bugs.json`의 파일, 줄, 유형과 대조 |
+| Agent의 원인 위치 정확도 | ✅ | Phase 7에서 측정: 17개 중 정확한 줄 88% (v0a~v0e, 실행 간 변동 있음, `docs/NOTES_ps7.md`). 수정안 정확성은 7-5에서 별도 측정 |
 
 ## 8. 작업 중 얻은 교훈
 

@@ -11,11 +11,11 @@ RTL을 입력하면 **Testbench 생성 → 시뮬레이션 → 로그 분석 →
 
 | 폴더 | 역할 | 상태 |
 |---|---|---|
-| `core/` | 데이터 모델(`StepResult`, `RunResult`, `ErrorItem`, `SimResult`), 로그 파서, 판정(`analyze`), VCD 읽기(`VcdReader`)와 Agent용 VCD 도구(`VcdTools`), 버그 주입(`bugs.py`), 평가 하네스(`evaluator.py`), 평가 리포트(`eval_report.py`), RTL Analyzer(`rtl_analyzer.py`, `rtl_clkrst.py`, `rtl_summary.py`), TB Generator(`tb_prompt.py`, `tb_check.py`, `tb_generator.py`), Compile Gate와 수리 루프(`compile_gate.py`, `tb_repair.py`), TB 비교(`eval_compare.py`) | ✅ |
+| `core/` | 데이터 모델(`StepResult`, `RunResult`, `ErrorItem`, `SimResult`), 로그 파서, 판정(`analyze`), VCD 읽기(`VcdReader`)와 Agent용 VCD 도구(`VcdTools`), 버그 주입(`bugs.py`), 평가 하네스(`evaluator.py`), 평가 리포트(`eval_report.py`), RTL Analyzer(`rtl_analyzer.py`, `rtl_clkrst.py`, `rtl_summary.py`), TB Generator(`tb_prompt.py`, `tb_check.py`, `tb_generator.py`), Compile Gate와 수리 루프(`compile_gate.py`, `tb_repair.py`), TB 비교(`eval_compare.py`), Debug Agent 도구와 대화 규약(`debug_tools.py`, `debug_protocol.py`, `debug_loop.py`), Agent 평가(`debug_eval.py`), 수정안 검증(`fix_verify.py`) | ✅ |
 | `llm/` | LLM 계층: 제공자 인터페이스, Gemini 제공자, 가짜 LLM, 디스크 캐시, 속도/일일 한도 제어, 재시도와 호출 상한, `.env` 설정 | ✅ |
 | `sim/` | 시뮬레이터 실행 계층. `Simulator` 추상 클래스, `XsimSim` 어댑터, 도구 실행기(`run_tool`), 작업 폴더 생성, Tcl 템플릿 | ✅ |
-| `scripts/` | 터미널 CLI (`run_once.py`: 실행 + 판정 출력, `run_eval.py`: 평가 실행, `make_baseline_report.py`: 리포트 생성, `show_rtl.py`: RTL 분석 결과 표, `make_rtl_summary.py`: TB Generator 입력 요약, `gen_tb.py`: TB 생성·검사·게이트, `compare_eval.py`: TB 비교, `llm_ping.py`: LLM 연결 확인)와 로그 샘플 수집 도구 | ✅ |
-| `tests/` | 단위·통합 테스트 389개, 그리고 테스트용 실제 xsim 로그·VCD 샘플(`tests/data/`) | ✅ |
+| `scripts/` | 터미널 CLI (`run_once.py`: 실행 + 판정 출력, `run_eval.py`: 평가 실행, `make_baseline_report.py`: 리포트 생성, `show_rtl.py`: RTL 분석 결과 표, `make_rtl_summary.py`: TB Generator 입력 요약, `gen_tb.py`: TB 생성·검사·게이트, `compare_eval.py`: TB 비교, `run_debug_eval.py`: Debug Agent 평가, `llm_ping.py`: LLM 연결 확인)와 로그 샘플 수집 도구 | ✅ |
+| `tests/` | 단위·통합 테스트 586개, 그리고 테스트용 실제 xsim 로그·VCD 샘플(`tests/data/`) | ✅ |
 | `docs/` | 단계별 개발 기록 (`NOTES_p0.md` ~ `NOTES_ps6.md`) | ✅ |
 | `Manual_test/` | 자동화 전에 `xvlog → xelab → xsim` 흐름을 손으로 검증한 기록 (첫 대상 DUT: async FIFO) | ✅ |
 | `runs/` | 실행마다 생성되는 고유 작업 폴더 (Git 추적 제외) | ✅ |
@@ -45,7 +45,12 @@ Agent/
 │   ├── tb_generator.py         # LLM 1회 호출 -> 추출 -> 정적 검사 -> TBResult
 │   ├── compile_gate.py         # xvlog -> xelab 게이트, 에러 파서
 │   ├── tb_repair.py            # 정적/컴파일 에러를 되먹여 재생성 (최대 N회)
-│   └── eval_compare.py         # 두 TB의 평가 결과 비교
+│   ├── eval_compare.py         # 두 TB의 평가 결과 비교
+│   ├── debug_tools.py          # Debug Agent 도구: 로그/RTL/TB 조회, 검색, 수정안 저장 (논리 이름만 노출)
+│   ├── debug_protocol.py       # Agent 대화 규약: JSON action 파서, 보고서 검증, 프롬프트
+│   ├── debug_loop.py           # Agent 루프: 단계 제한, 형식 오류/보고서 거부 되먹임, LLM 오류 종료
+│   ├── debug_eval.py           # Agent 평가: 정답(파일, 줄) 대조, 지표 집계, 이어하기, 리포트
+│   └── fix_verify.py           # 수정안 재시뮬레이션과 분류 (7-5)
 ├── llm/
 │   ├── base.py                 # LLMRequest/Response, 오류 계층, 제공자 인터페이스
 │   ├── gemini.py               # Gemini 제공자 (google-genai), 오류 매핑
@@ -70,7 +75,10 @@ Agent/
 │   ├── make_rtl_summary.py     # TB Generator 입력용 요약 JSON 생성
 │   ├── llm_ping.py             # LLM 연결 확인, 모델 목록, 남은 일일 호출 수
 │   ├── gen_tb.py               # TB 생성 / --dry-run / --gate / --check (--compile)
-│   └── compare_eval.py         # 두 TB 평가 결과 비교 리포트
+│   ├── compare_eval.py         # 두 TB 평가 결과 비교 리포트
+│   ├── run_debug_eval.py       # Debug Agent 평가 (--dry-run / --only / --resume / --no-cache / --empty-retries / --no-sim-tool / --no-verify-fixes)
+│   ├── verify_fixes.py         # 끝난 평가 결과의 수정안 사후 검증 (LLM 호출 없음)
+│   └── show_proposals.py       # 케이스의 root_cause와 수정안 diff 출력
 ├── tests/
 │   ├── data/                   # 실제 xsim 로그, VCD 샘플 (README 참고)
 │   ├── test_models.py          #  6
@@ -89,7 +97,7 @@ Agent/
 │   ├── test_rtl_hierarchy.py   # 18
 │   ├── test_rtl_clkrst.py      # 21
 │   ├── test_rtl_summary.py     # 22
-│   ├── test_llm_core.py        # LLM 계층 (요청, 가짜 LLM, 캐시, 클라이언트)
+│   ├── test_llm_core.py        # LLM 계층 (요청, 가짜 LLM, 캐시(빈·비STOP 응답은 저장 안 함), 클라이언트)
 │   ├── test_llm_limiter.py     # 한도 제어
 │   ├── test_llm_config_gemini.py # 설정, .env, Gemini 오류 매핑 (53개 합계)
 │   ├── test_tb_check.py        # 48
@@ -98,7 +106,13 @@ Agent/
 │   ├── test_compile_gate.py    # 24 (실제 Vivado 3개 포함)
 │   ├── test_tb_repair.py       # 18
 │   ├── test_gen_tb_cli.py      #  4
-│   └── test_eval_compare.py    # 17
+│   ├── test_eval_compare.py    # 17
+│   ├── test_debug_tools.py     # 43
+│   ├── test_debug_protocol.py  # 38
+│   ├── test_debug_loop.py      # 37
+│   ├── test_debug_eval.py      # 31
+│   ├── test_fix_verify.py      # 32
+│   └── test_run_debug_eval_cli.py  #  9
 ├── docs/
 │   ├── NOTES_p0.md             # Phase 0: 수동 실행
 │   ├── NOTES_ps1.md            # Phase 1: XsimSim 어댑터
@@ -256,7 +270,7 @@ errors    :  (* = 주 원인)
 | 큰 파일 | 줄 단위 스트리밍 파싱, 신호/시간 구간 적재 필터. 143MB는 약 8.5초에 메모리 1.1GB (합성 데이터 기준) |
 | LLM 도구 | `list_signals` / `read_vcd_signal` / `sample_signals`. 출력 상한, `truncated`와 `next_t0_ps`, 오류는 dict로 반환 |
 
-### Debug Agent Loop (📝)
+### Debug Agent Loop (🚧 7-1~7-3 완료, 7-4 하니스 완료)
 
 FAIL일 때만 동작하는 Agent 구간입니다. LLM이 도구를 골라 쓰며 **가설 → 증거 수집 → 가설 수정**을 반복하고, 구조화된 결론(`final_report`)으로 종료합니다.
 
@@ -271,6 +285,20 @@ FAIL일 때만 동작하는 Agent 구간입니다. LLM이 도구를 골라 쓰�
 | `rerun_sim` | `runs/` 복사본에서만 재시뮬레이션 |
 
 가드레일: 최대 반복 횟수 제한, 원본 파일 쓰기 금지, 도구 출력 길이 제한, TB/RTL 수정 권한 분리.
+
+**구현 상태와 설계 결정** (`docs/NOTES_ps7.md`)
+
+| 단계 | 내용 | 상태 |
+|---|---|---|
+| 7-1 | 도구(`core/debug_tools.py`): `get_log_snippet`, `read_rtl`, `read_tb`, `search_rtl`, `propose_fix` + 기존 VCD 도구 3개. 로그의 절대 경로를 논리 이름(`rtl/fifo_ctrl.v`)으로 바꿔 변형 ID 같은 정답 단서를 차단 | ✅ |
+| 7-2 | 대화 규약(`core/debug_protocol.py`): 응답마다 JSON action 하나, 파서와 형식 오류 되먹임, 최종 보고서 검증(근거 없는 결론, 없는 단계 인용 거부), 프롬프트 | ✅ |
+| 7-3 | 루프(`core/debug_loop.py`): 최대 단계, 연속 형식 오류 한도, 보고서 거부 되먹임(없는 줄·수정안 id·도구를 안 부른 단계 인용), 같은 호출 반복 안내, LLM 오류별 종료 상태(`quota`/`budget`/`llm_error`), 못 찾으면 보고서를 만들지 않고 `max_steps`로 기록 | ✅ |
+| 7-4 | 평가 하니스(`core/debug_eval.py`, `scripts/run_debug_eval.py`): 사람 TB로 실패시킨 변형에서 Agent 보고서를 정답(파일, 줄)과 대조, 결과 분류 6종, 단계·호출·형식 오류율·확신도 보정 집계, 케이스별 저장과 `--resume`. 1차 실측(3개)에서 측정 결함 4개를 찾아 수정, 17개 전체 실행 2회(v0a 정확한 줄 88%, v0b 71%, 하니스가 달라 직접 비교 불가). v0b 분석에서 캐시 결함과 빈 응답 재시도 필요를 확인해 수정, v0c(`--no-cache`, 재시도 적용) 76%, v0d(줄 번호 수정 적용) 88%. 원인을 설명할 수 있는 변화는 B03뿐이고 B16은 코드 변경 없이 뒤집혀 실행 간 변동이 있다. B14, B15는 4번 중 3~4번 오답으로 체계적 실패, 다음은 7-5 (`docs/NOTES_ps7.md` 5-3~5-8절) | ✅ |
+| 7-5 | 수정안 검증(`core/fix_verify.py`, `rerun_sim` 도구, `scripts/verify_fixes.py`): 수정안을 복사본에 적용해 원본 사람 TB로 재시뮬레이션, 골든과 비교해 `fixed_golden`/`fixed_pass`/`still_fail`/`unverified`/`no_fix`로 분류. 구현 완료. v0d 17개 사후 검증(실제 xsim): 골든과 같음 12, PASS 1(기능적으로 올바른 수정), FAIL 2, 수정안 없음 2. 위치 exact 15개 중 수정안까지 맞은 것은 13개이고, `count <= count;` 환각 수정안이 4개 케이스에서 반복됨. v0e(도구와 7번 규칙 켬): 위치 88%로 같고 틀린 수정안이 보고서에 실린 케이스 3→0, 단 `rerun_sim`이 단계를 써서 B13이 8단계 제한으로 보고서를 못 냄 (`docs/NOTES_ps7.md` 5-9~5-11절) | ✅ |
+
+- 도구 호출은 제공자의 function calling이 아니라 **텍스트 JSON 규약**으로 구현했다. 현재 LLM 계층이 `generate(prompt) -> text`뿐이고, 이 방식이 제공자 교체, SystemVerilog/UVM 확장, 기존 디스크 캐시 재사용에 유리하다. 대신 형식 오류가 나올 수 있어 파서가 이유를 돌려주고 루프가 되먹인다.
+- 수정 제안(`propose_fix`)은 RTL만 받는다. TB가 틀렸다고 판단하면 수정이 아니라 `tb_issue`로 보고한다.
+- 첫 평가는 **사람 TB**(골든 PASS 검증됨)로 한다. 그러면 변형의 FAIL은 정의상 RTL 버그라서 TB 품질과 Agent 품질이 섞이지 않는다. LLM TB 입력은 그 다음 단계다.
 
 ### 평가 하네스 (✅ TB-only 기준선 / 📝 Agent 평가)
 
@@ -300,7 +328,7 @@ DUT별로 버그를 주입한 변형(`bugs/`)과 정답 메타데이터(파일, 
 
 | 구분 | 내용 |
 |---|---|
-| 자동 테스트 | 389개 (`pytest -q`). Vivado가 없으면 실제 실행 테스트 8개, 샘플 VCD가 없으면 샘플 기반 테스트 3개는 건너뜀 |
+| 자동 테스트 | 586개 (`pytest -q`). Vivado가 없으면 실제 실행 테스트 8개, 샘플 VCD가 없으면 샘플 기반 테스트 3개는 건너뜀 |
 | 실제 Vivado 실행 | 정상 / PASS / FAIL / `$error` / `$fatal` / PASS+에러 / 타임아웃 / 컴파일 에러 8종을 실제로 돌려 판정이 모두 기대와 일치 |
 | 평가 하네스 | 골든 1 + 버그 변형 19개를 실제 Vivado로 실행 (221초). 판정 규칙은 가짜 Runner로 Vivado 없이 테스트 |
 | RTL Analyzer | sync FIFO(모듈 3개)와 async FIFO(모듈 5개)의 포트 폭, 계층, 클럭/리셋, timescale을 실제 소스에서 추출해 정답과 대조. 요약은 스키마 검증과 TB 생성 차단 조건(`blockers`)을 테스트로 고정 |
@@ -404,6 +432,15 @@ report.md
 
 ⚠️ `.gitignore`에 `*.bat`가 있어 bat 파일이 커밋되지 않는다. 8-3에서 예외를 추가해야 한다. top 모듈 지정은 자동 추정을 기본으로 하고, 실패 시 `agent.toml`로 덮어쓰는 방식을 계획한다.
 
+```powershell
+# Debug Agent 평가 (사람 TB가 실패시킨 변형에서 원인 위치를 맞히는지). 실행 전에 계획만 확인
+python -m scripts.run_debug_eval --dry-run
+python -m scripts.run_debug_eval --only B01 B07 B12       # 처음엔 2~3개로 규약 준수 여부부터 확인 (--max-output-tokens 기본 4096)
+python -m scripts.run_debug_eval                          # 전체 (Vivado + Gemini)
+python -m scripts.run_debug_eval --resume                 # 한도로 멈췄다면 가장 최근 폴더에서 이어서
+python -m scripts.run_debug_eval --no-cache --label v0c   # 실행 간 변동을 보려면 캐시를 끈다 (캐시를 켜면 이전 응답이 재생된다)
+```
+
 ## 🗺️ Development Status
 
 | Phase | 내용 | 상태 |
@@ -415,8 +452,8 @@ report.md
 | 4 | 골든 DUT(sync FIFO)와 self-checking TB, 버그 주입 세트, 평가 하네스와 TB-only 기준선 (`docs/NOTES_ps4.md`) | ✅ |
 | 5 | RTL Analyzer: 모듈/포트/파라미터/계층/top 추정, 클럭·리셋 판별, timescale 상태, TB Generator용 요약 JSON과 검증 (`docs/NOTES_ps5.md`) | ✅ |
 | 6 | TB Generator + Compile Gate: LLM 계층(Gemini 무료 티어), 프롬프트, 정적 검사, xvlog/xelab 게이트와 수리 루프, 같은 변형 세트로 평가·비교 (`docs/NOTES_ps6.md`) | ✅ |
-| 7 | Debug Agent Loop | 🚧 |
-| 8 | Regression / Report, UART·SPI·I2C로 확장, 통합 실행(`run_agent.py` + `run_agent.bat`) (설계: 아래 "최종 사용 방법") | 📝 |
+| 7 | Debug Agent Loop: 7-1 도구, 7-2 대화 규약·프롬프트, 7-3 루프, 7-4 평가 하니스 (v0a~v0e), 7-5 수정 검증(`rerun_sim`, 사후 검증). 위치 정확도 17개 중 15개, 한계(클럭 논리 오해 반복, 단계 제한, 증거 도구 미사용)는 `docs/NOTES_ps7.md` 5-12절 | ✅ |
+| 8 | 새 DUT(UART·SPI·I2C 등)로 확장해 Phase 7의 한계가 일반적인지 확인, Regression / Report, 통합 실행(`run_agent.py` + `run_agent.bat`) (설계: 위 "최종 사용 방법") | 🚧 |
 
 ### 버전 로드맵
 
