@@ -38,10 +38,10 @@ sim/      runner.py(run_tool, 타임아웃/프로세스 트리 종료), xsim 어
 llm/      base, client, config, gemini, cache, limiter, fake
 scripts/  run_eval, run_debug_eval, verify_fixes, show_proposals, gen_tb, llm_ping,
           compare_eval, make_baseline_report, make_rtl_summary, show_rtl
-dut/      sync_fifo/, spi/, uart/ (각 rtl/, tb/, spec.md)
-bugs/     sync_fifo/bugs.json, spi/bugs.json, uart/bugs.json (변형 카탈로그)
+dut/      sync_fifo/, spi/, uart/, i2c/ (각 rtl/, tb/, spec.md)
+bugs/     sync_fifo/bugs.json, spi/bugs.json, uart/bugs.json, i2c/bugs.json (변형 카탈로그)
 docs/     NOTES_p0.md ~ NOTES_ps8.md (Phase별 설계·결과 기록)
-tests/    pytest (전체 598개가 기대값)
+tests/    pytest (전체 601개가 기대값)
 runs/     실행 결과(results.json, work/ 등)
 ```
 
@@ -125,7 +125,7 @@ sync_fifo에서 튜닝한 Agent를 **그대로** SPI에 돌려야 일반화 성�
 결과를 본 뒤에 기준을 바꾸지 말고, 바꿔야 하면 바꿨다고 기록한다.
 
 ### 이후 Phase 8 계획
-- 8-2: UART, I2C로 같은 측정 반복(사용자가 만든 RTL 사용)
+- 8-2: UART, I2C로 같은 측정 반복. UART는 사용자 RTL(`Projects/UART_mid-bit`) 그대로. **I2C는 사용자 요청으로 Claude가 사용자 스타일에 맞춰 RTL을 작성**(사용자 I2C는 미완성이었음) → RTL·TB·변형 모두 Claude 작성이라 측정 편향이 가장 크다. 리포트에 명시
 - 8-3: Regression Manager, Report Generator, `run_agent.py` + `run_agent.bat`
   - 목표 사용: `dut/` 폴더에 RTL과 spec(필요하면 TB)만 넣고 bat 실행 → 명령어 입력 없이 전 과정이 돌고 report 생성
   - 아이디어 후보(필수 아님): SVA 기반 판정 근거(SystemVerilog 단계), 커버리지 요약을 Agent 입력에 포함, 리포트 자동 생성
@@ -141,6 +141,6 @@ sync_fifo에서 튜닝한 Agent를 **그대로** SPI에 돌려야 일반화 성�
 ---
 
 ## 8. 테스트
-- `pytest -q` 전체 598개가 기대값(UART 추가 후). `tests/test_spi_dut.py` 9개, `tests/test_uart_dut.py` 3개(Icarus 필요).
+- `pytest -q` 전체 601개가 기대값(UART, I2C 추가 후). `tests/test_spi_dut.py` 9개, `tests/test_uart_dut.py` 3개, `tests/test_i2c_dut.py` 3개(Icarus 필요).
 - Icarus가 없는 환경에서는 일부 테스트가 건너뛰거나 실패할 수 있다. 실패하면 환경 문제인지 코드 문제인지 구분해서 보고한다.
 - `sim` 패키지(`sim/runner.py`)가 없으면 `core/compile_gate.py` import가 실패한다. 프로젝트 루트에서 실행한다.

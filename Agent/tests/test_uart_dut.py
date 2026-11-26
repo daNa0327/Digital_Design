@@ -22,12 +22,12 @@ CAT = ROOT / "bugs" / "uart" / "bugs.json"
 needs_iverilog = pytest.mark.skipif(shutil.which("iverilog") is None, reason="iverilog 없음")
 
 
-def run_iverilog(files, tmp_path, name="x"):
+def run_iverilog(files, tmp_path, name="x", tb=TB):
     """TB에 timescale이 없으므로 기본값(1ns)을 맞추는 지시문 파일을 앞에 붙여 Icarus로 실행하고 로그를 돌려준다."""
     ts = tmp_path / "ts.v"
     ts.write_text("`timescale 1ns/1ps\n")
     out = tmp_path / name
-    r = subprocess.run(["iverilog", "-g2005", "-o", str(out), str(ts), *map(str, files), str(TB)],
+    r = subprocess.run(["iverilog", "-g2005", "-o", str(out), str(ts), *map(str, files), str(tb)],
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     return subprocess.run(["vvp", str(out)], capture_output=True, text=True, timeout=120).stdout
