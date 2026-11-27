@@ -69,6 +69,7 @@ class DebugRun:
     proposals: list[dict[str, Any]] = field(default_factory=list)
     initial_message: str = ""        # Agent이 처음 받은 증거 메시지 (사후 분석에서 Agent가 무엇을 알았는지 확인)
     prompt_sha: str = ""             # 시스템 프롬프트(규약 + 도구 명세)의 해시. 어떤 프롬프트로 얻은 결과인지 구분
+    stripped_fix_ids: list[Any] = field(default_factory=list)   # F5: rerun_sim PASS가 아니라 보고서에서 뺀 수정안 id
 
     @property
     def n_steps(self) -> int:
@@ -90,6 +91,7 @@ class DebugRun:
             "turns": [{"step": t.step, "assistant": t.assistant, "observation": t.observation} for t in self.turns],
             "proposals": self.proposals,
             "prompt_sha": self.prompt_sha, "initial_message": self.initial_message,
+            "stripped_fix_ids": self.stripped_fix_ids,
         }
 
 
@@ -112,6 +114,27 @@ def semantic_problems(report: dict[str, Any], ws: DebugWorkspace, tool_steps: se
         if isinstance(pid, int) and pid not in have:
             out.append(f"fix_proposal_ids의 {pid}은 propose_fix가 돌려준 id가 아니다 (있는 id: {sorted(have)}).")
     return out
+
+
+def strip_unverified_fixes(report: dict[str, Any], ws: DebugWorkspace) -> tuple[dict[str, Any], list[Any]]:
+    """F5: fix_proposal_ids에서 rerun_sim이 PASS하지 않은(또는 돌리지 않은) id를 뺀다.
+
+    프롬프트 규칙 7("PASS한 제안만 올려라")을 LLM이 어기는 경우가 spi1에서 4/30이었다. 보고서를 거부하면 턴을 더 쓰므로
+    위치 판단은 살리고 검증되지 않은 수정안만 뺀다. rerun_sim 도구가 없는 모드(ws.sim None)에서는 확인할 수단이 없어 그대로 둔다.
+    """
+    ids = report.get("fix_proposal_ids") or []
+    if ws.sim is None or not ids:
+        return report, []
+    passed = {pid for pid, res in ws.sim_results.items() if res.get("status") == "PASS"}
+
+    def ok(i: Any) -> bool:
+        try:
+            return int(i) in passed
+        except (TypeError, ValueError):
+            return False
+
+    kept = [i for i in ids if ok(i)]
+    return {**report, "fix_proposal_ids": kept}, [i for i in ids if not ok(i)]
 
 
 def debug_loop(ws: DebugWorkspace, evidence: Evidence, client, max_steps: int = 10,
@@ -227,7 +250,8 @@ def debug_loop(ws: DebugWorkspace, evidence: Evidence, client, max_steps: int = 
         record(StepLog(step, "final", cached=resp.cached, finish_reason=resp.finish_reason,
                        retries=retries, retry_reasons=retry_reasons),
                _compact({"thought": act.thought, "action": "final", "report": act.report}), "{}")
-        run.status, run.report = "final", act.report
+        run.report, run.stripped_fix_ids = strip_unverified_fixes(act.report, ws)
+        run.status = "final"
         break
 
     run.proposals = [p.to_dict() for p in ws.proposals]

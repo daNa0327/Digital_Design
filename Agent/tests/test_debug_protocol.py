@@ -252,3 +252,12 @@ def test_초기_증거에_CHECK_FAIL_괄호_문맥이_실린다(ws):
     log = "CHECK_FAIL t=27 ns sig=done exp=1 got=0 (bit=7 CS=0 busy=1 done=0)\n"
     msg = build_initial_message(evidence_from_log("m", "FAIL", "FAIL", log, ws.list_files()))
     assert "got=0  (bit=7 CS=0 busy=1 done=0)" in msg
+
+
+def test_초기_증거에_파형이_있으면_실패_줄_다음에_싣는다(ws):
+    """F2b: Evidence.waveform이 있으면 첫 메시지에 들어가고, 없으면 그 절이 없다."""
+    ev = evidence_from_log("m", "FAIL", "FAIL", "CHECK_FAIL t=1 ns sig=s exp=0 got=1\n", ws.list_files())
+    assert "Waveform up to" not in build_initial_message(ev)
+    ev.waveform = "Waveform up to the first failures (...):\n  tb.s  (check s failed at 1000 ps): 0ps=0"
+    msg = build_initial_message(ev)
+    assert msg.index("First failing checks") < msg.index("Waveform up to")

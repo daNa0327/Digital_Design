@@ -303,6 +303,49 @@ class DebugWorkspace:
 # ---------------------------------------------------------------------------------------------
 # 작업 공간 만들기
 # ---------------------------------------------------------------------------------------------
+def initial_waveform(vcd: VcdTools | None, fails: list, n_changes: int = 8, max_signals: int = 2) -> str:
+    """F2b: 첫 실패 체크들의 신호를 VCD에서 찾아 실패 시각까지의 마지막 값 변화를 보여 준다.
+
+    체크 이름이 신호 이름과 다를 수 있어(busy_rise_timeout) '_' 단위로 끝을 줄여 가며 leaf 이름이 정확히 같은 신호를 찾는다
+    (busy_rise_timeout -> busy_rise -> busy). 두 단어 이상 접두는 leaf 앞부분 일치도 허용한다(master_rx_hold -> master_rx_data).
+    같은 leaf가 여럿이면 계층이 가장 얕은 것. 못 찾으면 그 체크는 건너뛴다
+    (추측한 신호를 보여 주지 않는다). 시간 창 대신 변화 개수로 자르는 이유: DUT마다 비트 주기가 1us~10us로 다르다.
+    """
+    r = getattr(vcd, "r", None)                 # 테스트용 가짜 VcdTools처럼 리더가 없으면 생략
+    if r is None:
+        return ""
+    by_leaf: dict[str, list[str]] = {}
+    for n in r.names():
+        by_leaf.setdefault(n.rsplit(".", 1)[-1], []).append(n)
+    lines: list[str] = []
+    seen: set[str] = set()
+    for f in fails:
+        if len(seen) >= max_signals:
+            break
+        if f.t_ps is None:
+            continue
+        parts = f.signal.split("_")
+        name = None
+        for k in range(len(parts), 0, -1):
+            key = "_".join(parts[:k])
+            cands = by_leaf.get(key)
+            if not cands and k >= 2:            # master_rx_hold -> master_rx -> master_rx_data (한 단어 접두는 오탐이 많아 제외)
+                cands = [n for leaf, ns in by_leaf.items() if leaf.startswith(key + "_") for n in ns]
+            if cands:
+                name = min(cands, key=lambda n: (n.count("."), n))
+                break
+        if name is None or name in seen or r.status(name)[0] == "not_loaded":
+            continue
+        seen.add(name)
+        ch = [(t, v) for t, v in r.changes(name) if t <= f.t_ps][-n_changes:]
+        vals = ", ".join(f"{t}ps={v}" for t, v in ch) or "(no changes)"
+        lines.append(f"  {name}  (check {f.signal} failed at {f.t_ps} ps): {vals}")
+    if not lines:
+        return ""
+    return ("Waveform up to the first failures (last value changes at or before the failure time, binary; "
+            "signal matched from the check name):\n" + "\n".join(lines))
+
+
 def workspace_from_files(rtl_files: list[str | Path], tb_files: list[str | Path], log: str,
                          vcd_tools: VcdTools | None = None) -> DebugWorkspace:
     """실제 파일에서 작업 공간을 만든다. 논리 이름은 `rtl/<파일명>`, `tb/<파일명>`.

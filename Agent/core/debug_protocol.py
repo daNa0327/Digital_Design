@@ -178,6 +178,7 @@ class Evidence:
     files: dict[str, Any]                     # DebugWorkspace.list_files() 결과
     spec_text: str | None = None
     log_head: str = ""                        # 로그 마지막 몇 줄 (보통 [TB] FAIL/$finish)
+    waveform: str = ""                        # F2b: 첫 실패 신호의 실패 시각까지 파형 (debug_tools.initial_waveform)
 
 
 def evidence_from_log(top: str, status: str, tb_verdict: str | None, log: str, files: dict[str, Any],
@@ -261,6 +262,8 @@ def build_initial_message(ev: Evidence) -> str:
         parts.append("First failing checks" + more + ":\n" + "\n".join(_fmt_fail(f) for f in ev.check_fails))
     else:
         parts.append("No CHECK_FAIL lines were parsed from the log. Inspect the log with get_log_snippet.")
+    if ev.waveform:
+        parts.append(ev.waveform)
     if ev.log_head:
         parts.append("Log tail:\n" + ev.log_head)
     fl = ev.files

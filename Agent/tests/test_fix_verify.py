@@ -291,11 +291,12 @@ def test_하네스_기본값은_이전_조건과_같다(env):
 
 
 def test_사후_검증은_Agent의_주장과_무관하게_원본_TB로_다시_돌린다(env):
-    """Agent가 rerun_sim을 쓰지 않아도 보고서가 지목한 수정안은 사후에 시뮬레이션된다. 틀린 수정이면 still_fail."""
+    """Agent가 재시뮬레이션하지 않아도 보고서가 지목한 수정안은 사후에 시뮬레이션된다. 틀린 수정이면 still_fail.
+    rerun_sim 도구가 없는 모드로 확인한다 (도구가 있으면 F5가 돌리지 않은 id를 먼저 빼므로)."""
     flow = [tool("propose_fix", file="rtl/a.v", find="assign y = ~x;", replace="assign y = ~x | 1'b0;"),
             final("rtl/a.v", 2, ids=[1]),
             tool("read_rtl", file="rtl/b.v"), final("rtl/b.v", 2)]
-    rep, runner = go(env, flow, sim_tool=True, verify_fixes=True)
+    rep, runner = go(env, flow, sim_tool=False, verify_fixes=True)
     assert rep.cases[0].fix["category"] == "still_fail" and rep.cases[0].fix["agent_sims"] == {}
     assert rep.cases[0].score["category"] == "exact"                # 위치는 맞아도 수정은 실패한 케이스
     assert rep.summary["located_but_not_fixed"] == ["B01", "B02"]     # B02는 위치만 맞고 수정안이 없다
@@ -371,3 +372,36 @@ def test_증거_도구를_안_쓰면_빈_목록(env):
     rep, _ = go(env, [tool("read_rtl", file="rtl/a.v"), final("rtl/a.v", 2),
                       tool("read_rtl", file="rtl/b.v"), final("rtl/b.v", 2)])
     assert rep.summary["evidence_tool_cases"] == [] and "쓴 케이스: 0/2" in render_markdown(rep)
+
+
+# ---------------------------------------------------------------------------------------------
+# F5: rerun_sim이 PASS하지 않은 수정안 id는 보고서에서 뺀다
+# ---------------------------------------------------------------------------------------------
+def test_strip_unverified_fixes는_PASS한_id만_남긴다():
+    """PASS(1)만 남고 FAIL(2), 안 돌린 3은 빠진다. 문자열 "1"도 같은 id로 본다."""
+    from core.debug_loop import strip_unverified_fixes
+    ws = mk_ws(fake_sim())
+    ws.sim_results = {1: {"status": "PASS"}, 2: {"status": "FAIL"}}
+    rep, removed = strip_unverified_fixes({"fix_proposal_ids": [1, 2, 3, "1"], "summary": "s"}, ws)
+    assert rep["fix_proposal_ids"] == [1, "1"] and removed == [2, 3] and rep["summary"] == "s"
+
+
+def test_rerun_sim_도구가_없으면_수정안을_건드리지_않는다():
+    """sim이 없는 모드에서는 검증할 수단이 없어 그대로 둔다 (이전 측정과 같은 조건)."""
+    from core.debug_loop import strip_unverified_fixes
+    rep, removed = strip_unverified_fixes({"fix_proposal_ids": [1]}, mk_ws(None))
+    assert rep["fix_proposal_ids"] == [1] and removed == []
+
+
+def test_재시뮬_FAIL한_수정안을_보고하면_빠지고_기록된다(env):
+    """spi1의 규칙 7 위반(FAIL한 제안을 보고)을 재현: 최종 보고서와 사후 검증 모두 수정안 없음, 뺀 id는 결과에 남는다."""
+    flow = [tool("propose_fix", file="rtl/a.v", find="assign y = ~x;", replace="assign y = ~~x;"),
+            tool("rerun_sim", proposal_id=1),
+            final("rtl/a.v", 2, ids=[1]),
+            tool("read_rtl", file="rtl/b.v"),
+            final("rtl/b.v", 2)]
+    rep, _ = go(env, flow, sim_tool=True, verify_fixes=True)
+    c1 = rep.cases[0]
+    assert c1.run["report"]["fix_proposal_ids"] == [] and c1.run["stripped_fix_ids"] == [1]
+    assert c1.fix["category"] == "no_fix"
+    assert summarize_cases(rep.cases)["stripped_fix_cases"] == ["B01"]

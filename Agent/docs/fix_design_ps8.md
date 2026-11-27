@@ -76,3 +76,33 @@ TB는 `CHECK_FAIL t=.. sig=.. exp=.. got=.. (bit=3 CS=0 busy=1 done=0)`처럼 �
 - UART/I2C 케이스 내용을 보고 프롬프트나 도구를 고치지 않는다.
 - 모델 교체(유료 모델)는 하지 않는다. 비용 0 원칙.
 - 수정 전후를 다른 TB나 카탈로그로 비교하지 않는다.
+
+## 5. 진행 기록
+
+### spi1 (F1+F2a, 2026-11-28, `main` 3e3bb8e)
+
+| 지표 | spi0 | spi1 |
+|---|---|---|
+| exact | 16/30 | 22/30 |
+| 단계 부족 (`max_steps` + "단계 부족" unknown) | 2 + 4 | 0 + 0 |
+| `not_rtl_bug` / `no_report` | 4 / 2 | 0 / 0 |
+| 유령 주장 ("1주기뿐" 계열) | 5 | 4 (B06, B09, B10, B29) |
+| still_fail | 0 | **4** |
+| 수정안 golden / pass / no_fix | 9 / 4 / 17 | 16 / 4 / 6 |
+| 증거 도구 사용 케이스 | 9 | 4 |
+| LLM 호출 | 250 | 271 |
+
+- still_fail 4건(B05, B08, B11, B13)은 모두 프롬프트 규칙 7 위반이다: rerun_sim이 FAIL을 돌려준 수정안(3건)이나 rerun_sim을 돌리지 않은 수정안(1건)을 `fix_proposal_ids`에 올렸다. spi0에서는 단계가 모자라 rerun까지 가는 케이스가 적어(rerun 11회 → 27회) 드러나지 않았다.
+- 판정 기준 "still_fail 0 유지"를 깨서 **F5를 추가**했다 (설계 시점에는 없던 수정. 기준은 바꾸지 않았다).
+
+### F5 (추가): 검증되지 않은 수정안은 보고서에서 뺀다
+- 최종 보고서를 받은 직후 `fix_proposal_ids`에서 rerun_sim이 PASS하지 않은 id를 코드로 뺀다 (`core/debug_loop.py` `strip_unverified_fixes`). 뺀 id는 `stripped_fix_ids`, 케이스 목록은 요약의 `stripped_fix_cases`에 남겨 규칙 위반 빈도는 계속 볼 수 있게 한다.
+- 보고서를 거부하지 않는 이유: 위치 판단은 살리고 틀린 수정안만 빼기 위해서다. rerun_sim 도구가 없는 모드에서는 검증 수단이 없어 그대로 둔다.
+- F5는 Agent의 조사 경로를 바꾸지 않는 후처리라 단독 측정이 필요 없다. spi1에 적용한 계산값: golden 16 / pass 4 / still_fail 0 / no_fix 10.
+
+### F2b 구현 메모
+- 첫 실패 체크 이름에서 VCD 신호를 찾는다: `_` 단위로 끝을 줄여 leaf가 같은 신호(busy_rise_timeout → busy), 두 단어 이상 접두면 leaf 앞부분 일치도 허용(master_rx_hold → master_rx_data). 실패 시각까지의 마지막 값 변화 8개, 신호 최대 2개.
+- 매칭률(개발 세트만 확인): SPI 29/30, sync_fifo 17/17. UART/I2C는 held-out이라 확인하지 않았다.
+
+### 다음 측정: spi2 (F5 + F2b)
+- F2b의 효과(증거 사용, 위치 정확도, 유령 주장)를 본다. F5 효과는 still_fail이 0인지와 `stripped_fix_cases` 수로만 본다.

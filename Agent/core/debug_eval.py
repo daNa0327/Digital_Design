@@ -39,7 +39,7 @@ from typing import Any, Callable
 from core.bugs import Bug, apply_bug
 from core.debug_loop import DebugRun, StepLog, debug_loop
 from core.debug_protocol import evidence_from_log
-from core.debug_tools import workspace_from_files
+from core.debug_tools import initial_waveform, workspace_from_files
 from core.evaluator import Judged, Runner
 from core.fix_verify import FIX_CATEGORIES, check_fix, make_sim_fn
 
@@ -187,6 +187,7 @@ def summarize_cases(cases: list[Case]) -> dict[str, Any]:
         "n_fix_verified": len(fixed), "fix_categories": fix_cat, "agent_sim_runs": agent_sims,
         "fix_pass_rate": (fix_cat["fixed_golden"] + fix_cat["fixed_pass"]) / len(fixed) if fixed else None,
         "fix_golden_rate": fix_cat["fixed_golden"] / len(fixed) if fixed else None,
+        "stripped_fix_cases": [c.bug_id for c in ev if c.run.get("stripped_fix_ids")],
         "located_but_not_fixed": [c.bug_id for c in fixed if c.score["category"] in ("exact", "near")
                                   and c.fix["category"] not in ("fixed_golden", "fixed_pass")],
         "n_cases": len(cases), "n_evaluated": n,
@@ -292,6 +293,7 @@ def run_debug_eval(bugs: list[Bug], golden_rtl_dir: str | Path, tb_path: str | P
         ws = workspace_from_files(sorted(applied.rtl_dir.glob("*.v")), [tb_path], j.xsim_stdout,
                                   vcd_tools=vcd_loader(j.vcd_path))
         ev = evidence_from_log(dut_top, j.status, j.tb_verdict, ws.log, ws.list_files(), spec_text=spec_text)
+        ev.waveform = initial_waveform(ws.vcd, ev.check_fails)
         if sim_tool:        # Agent가 수정안을 원본 TB로 재시뮬레이션해 볼 수 있다 (rerun_sim 도구)
             ws.sim = make_sim_fn(runner, [tb_path], tb_top, root / bug.id / "agent_sim")
         say("  Agent 실행")

@@ -358,3 +358,60 @@ def test_propose_fix_설명에_원본_기준과_거부_조건이_있다(ws):
     """Agent가 이전 제안이 적용된 줄 알고 그 위에 find를 쓰는 실수(실측 1차 B12)를 설명으로 막는다."""
     d = next(s for s in tool_specs(ws) if s["name"] == "propose_fix")["description"]
     assert "원본" in d and "누적되지 않음" in d and "주석이나 공백" in d
+
+
+# ---------------------------------------------------------------------------------------------
+# F2b: 첫 실패 신호의 파형을 초기 메시지용으로 뽑는다
+# ---------------------------------------------------------------------------------------------
+_VCD = """$timescale 1ps $end
+$scope module tb $end
+$var wire 1 ! busy $end
+$var wire 8 " master_rx_data [7:0] $end
+$var integer 32 # bitn [31:0] $end
+$scope module dut $end
+$var wire 1 $ busy $end
+$upscope $end
+$upscope $end
+$enddefinitions $end
+#0
+0!
+b0 "
+b0 #
+0$
+#100
+1!
+1$
+b101 "
+#200
+0!
+0$
+#300
+1!
+1$
+"""
+
+
+def _fail(sig, t):
+    from core.evaluator import CheckFail
+    return CheckFail(t, sig, "1", "0")
+
+
+def test_initial_waveform은_체크_이름에서_신호를_찾아_실패_시각까지_보여준다():
+    """busy_rise_timeout -> busy(얕은 계층 tb.busy), 실패 시각(250ps) 이후 변화(300ps)는 넣지 않는다."""
+    from core.debug_tools import initial_waveform
+    from core.vcd_reader import VcdReader
+    from core.vcd_tools import VcdTools
+    w = initial_waveform(VcdTools(VcdReader.from_text(_VCD)), [_fail("busy_rise_timeout", 250)])
+    assert "tb.busy  (check busy_rise_timeout failed at 250 ps): 0ps=0, 100ps=1, 200ps=0" in w
+    assert "300ps" not in w and "tb.dut.busy" not in w
+
+
+def test_initial_waveform은_두_단어_접두까지만_넓히고_못_찾으면_빈_문자열():
+    """master_rx_hold -> master_rx_data는 찾고, bit_count는 bitn으로 오인하지 않는다. VCD가 없으면 빈 문자열."""
+    from core.debug_tools import initial_waveform
+    from core.vcd_reader import VcdReader
+    from core.vcd_tools import VcdTools
+    v = VcdTools(VcdReader.from_text(_VCD))
+    assert "tb.master_rx_data" in initial_waveform(v, [_fail("master_rx_hold", 150)])
+    assert initial_waveform(v, [_fail("bit_count", 150)]) == ""
+    assert initial_waveform(None, [_fail("busy", 150)]) == ""
