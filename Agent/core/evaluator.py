@@ -24,7 +24,7 @@ from core.bugs import Bug, apply_bug
 _UNIT_PS = {"fs": 0.001, "ps": 1, "ns": 1_000, "us": 1_000_000, "ms": 1_000_000_000}
 _CHECK_FAIL = re.compile(
     r"^CHECK_FAIL t=(?P<t>\d+)(?:\s*(?P<unit>fs|ps|ns|us|ms))?\s+sig=(?P<sig>\S+)\s+"
-    r"exp=(?P<exp>\S+)\s+got=(?P<got>\S+)", re.M)
+    r"exp=(?P<exp>\S+)\s+got=(?P<got>\S+)(?P<detail>[^\r\n]*)", re.M)
 _CHECKS = re.compile(r"^CHECKS total=(?P<total>\d+) mismatches=(?P<mm>\d+)", re.M)
 
 
@@ -48,6 +48,7 @@ class CheckFail:
     signal: str
     expected: str
     got: str
+    detail: str = ""                          # got 뒤의 나머지 (TB가 찍은 실패 순간 상태, 예: "(bit=3 CS=0 busy=1)")
 
 
 def parse_check_fails(stdout: str) -> list[CheckFail]:
@@ -56,7 +57,7 @@ def parse_check_fails(stdout: str) -> list[CheckFail]:
     for m in _CHECK_FAIL.finditer(stdout):
         unit = m.group("unit")
         t = int(int(m.group("t")) * _UNIT_PS[unit]) if unit else None
-        out.append(CheckFail(t, m.group("sig"), m.group("exp"), m.group("got")))
+        out.append(CheckFail(t, m.group("sig"), m.group("exp"), m.group("got"), m.group("detail").strip()))
     return out
 
 

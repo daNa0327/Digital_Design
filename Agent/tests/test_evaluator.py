@@ -33,6 +33,7 @@ def test_parse_check_fails_units_and_noise():
     fails = parse_check_fails(out)
     assert [(f.t_ps, f.signal, f.expected, f.got) for f in fails] == [
         (97_000, "full", "0", "1"), (1_500, "data_out", "bb", "cc"), (None, "empty", "1", "x")]
+    assert [f.detail for f in fails] == ["(model_count=7 wr_en=1 rd_en=0)", "(model_count=2)", "(model_count=0)"]
     assert parse_checks("CHECKS total=4099 mismatches=12\n") == (4099, 12)
     assert parse_checks("nothing") == (None, None)
 

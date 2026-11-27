@@ -90,7 +90,7 @@ def test_수정안은_결과에_담긴다(ws):
 # 형식 오류
 # ---------------------------------------------------------------------------------------------
 def test_형식_오류_후_복구(ws):
-    """JSON이 아닌 응답은 이유와 함께 되먹임되고, 다음 응답이 올바르면 계속한다. 형식 오류도 단계를 쓴다."""
+    """JSON이 아닌 응답은 이유와 함께 되먹임되고, 다음 응답이 올바르면 계속한다. 형식 오류 턴도 턴 번호는 받는다."""
     r, fake = run(ws, ["그냥 문장", tool("read_rtl", file="rtl/a.v"), final(evidence=[{"step": 2, "observation": "o"}])])
     assert r.status == "final" and r.format_errors == 1 and r.n_steps == 3
     assert "FORMAT ERROR" in fake.calls[1].prompt and "찾지 못" in fake.calls[1].prompt
@@ -364,3 +364,29 @@ def test_평탄한_propose_fix_호출은_단계를_잃지_않고_집계된다(ws
     assert r.steps[0].kind == "tool" and r.steps[0].tool == "propose_fix" and "정규화" in r.steps[0].note
     assert len(r.proposals) == 1 and r.to_dict()["normalized_calls"] == 1
     assert '"action": "tool"' in fake.calls[1].prompt and '"tool": "propose_fix"' in fake.calls[1].prompt
+
+
+# ---------------------------------------------------------------------------------------------
+# F1: 형식 오류와 거부된 보고서는 조사 단계로 세지 않는다
+# ---------------------------------------------------------------------------------------------
+def test_형식_오류는_조사_단계를_쓰지_않는다(ws):
+    """형식 오류 뒤에도 남은 단계가 그대로다. max_steps=2에서 형식 오류 1번 + 도구 2번을 할 수 있다."""
+    r, fake = run(ws, ["bad", tool("read_rtl", file="rtl/a.v"), tool("read_rtl", file="rtl/a.v", start_line=2)],
+                  max_steps=2)
+    assert "[2 step(s) left" in fake.calls[0].prompt and "[2 step(s) left" in fake.calls[1].prompt
+    assert r.n_tool_calls == 2 and r.status == "max_steps" and len(fake.calls) == 3
+
+
+def test_거부된_보고서는_조사_단계를_쓰지_않는다(ws):
+    """마지막 단계에서 낸 보고서가 거부돼도 고친 보고서를 낼 기회가 남는다."""
+    r, fake = run(ws, [tool("read_rtl", file="rtl/a.v"),
+                       final(evidence=[{"step": 9, "observation": "o"}]),       # 없는 단계 인용 -> 거부
+                       final()], max_steps=2)
+    assert r.status == "final" and r.rejected_reports == 1
+    assert "LAST step" in fake.calls[1].prompt and "LAST step" in fake.calls[2].prompt
+
+
+def test_세지_않는_턴은_max_free_turns로_상한이_있다(ws):
+    """거부만 반복하면 max_steps + max_free_turns 턴에서 끝난다 (호출량 상한 유지)."""
+    r, fake = run(ws, [final()] * 10, max_steps=2, max_free_turns=2)
+    assert r.status == "max_steps" and r.report is None and len(fake.calls) == 4 and r.rejected_reports == 4

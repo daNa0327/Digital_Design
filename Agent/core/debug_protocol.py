@@ -248,7 +248,7 @@ You have a limited number of steps; the remaining count is shown each turn. If y
 
 def _fmt_fail(f: CheckFail) -> str:
     t = f"{f.t_ps} ps" if f.t_ps is not None else "time unknown"
-    return f"  - t={t}  sig={f.signal}  expected={f.expected}  got={f.got}"
+    return f"  - t={t}  sig={f.signal}  expected={f.expected}  got={f.got}" + (f"  {f.detail}" if f.detail else "")
 
 
 def build_initial_message(ev: Evidence) -> str:

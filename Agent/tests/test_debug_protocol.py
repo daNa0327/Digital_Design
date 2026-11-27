@@ -245,3 +245,10 @@ def test_정규화는_tool_names가_있고_이름이_맞을_때만():
 def test_정상_호출은_정규화_표시가_없다():
     a = parse_action('{"action":"tool","tool":"read_rtl","args":{}}', _TOOLS)
     assert a.normalized is False
+
+
+def test_초기_증거에_CHECK_FAIL_괄호_문맥이_실린다(ws):
+    """F2a: TB가 got 뒤에 찍은 실패 순간 상태(괄호)를 첫 메시지에 그대로 싣는다. get_log_snippet 없이도 보인다."""
+    log = "CHECK_FAIL t=27 ns sig=done exp=1 got=0 (bit=7 CS=0 busy=1 done=0)\n"
+    msg = build_initial_message(evidence_from_log("m", "FAIL", "FAIL", log, ws.list_files()))
+    assert "got=0  (bit=7 CS=0 busy=1 done=0)" in msg

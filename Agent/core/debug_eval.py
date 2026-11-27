@@ -249,7 +249,7 @@ def _load_case(cases_dir: Path, bug_id: str) -> Case | None:
 
 def run_debug_eval(bugs: list[Bug], golden_rtl_dir: str | Path, tb_path: str | Path, tb_top: str,
                    dut_top: str, runner: Runner, client, work_root: str | Path, dut: str = "dut",
-                   spec_text: str | None = None, max_steps: int = 8, near: int = NEAR, resume: bool = False,
+                   spec_text: str | None = None, max_steps: int = 10, near: int = NEAR, resume: bool = False,
                    max_output_tokens: int | None = 4096, empty_retries: int = 1,
                    sim_tool: bool = False, verify_fixes: bool = False,
                    vcd_loader: Callable[[str | None], Any] = default_vcd_loader,

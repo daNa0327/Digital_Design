@@ -2,7 +2,8 @@
 
   초기 증거 -> [LLM이 JSON action 하나] -> 도구 실행 -> 관측을 대화에 추가 -> ... -> final 보고서
 
-LLM 호출 하나가 한 "단계"다. 도구 호출, 형식 오류, 거부된 보고서가 모두 단계를 쓴다 (호출량의 상한이기 때문).
+"단계"는 조사 행동(도구 호출, 최종 보고)이다. 형식 오류와 거부된 보고서는 단계로 세지 않는다 (spi0에서 230단계 중 19단계를
+먹어 조사 단계가 부족했다). 대신 이런 턴은 케이스당 `max_free_turns`번까지만 허용해 호출량의 상한을 유지한다.
 
 종료 상태 (`DebugRun.status`)
   final          보고서가 검증을 통과했다
@@ -19,7 +20,7 @@ LLM 호출 하나가 한 "단계"다. 도구 호출, 형식 오류, 거부된 �
 - 같은 도구를 같은 인자로 다시 부르면 이전 단계를 알려 준다 (같은 확인을 반복하는 루프 방지).
 
 공개 API:
-    debug_loop(ws, evidence, client, max_steps=8, ...) -> DebugRun
+    debug_loop(ws, evidence, client, max_steps=10, ...) -> DebugRun
 """
 
 from __future__ import annotations
@@ -113,8 +114,8 @@ def semantic_problems(report: dict[str, Any], ws: DebugWorkspace, tool_steps: se
     return out
 
 
-def debug_loop(ws: DebugWorkspace, evidence: Evidence, client, max_steps: int = 8,
-               max_format_errors: int = 3, model: str | None = None, temperature: float = 0.0,
+def debug_loop(ws: DebugWorkspace, evidence: Evidence, client, max_steps: int = 10,
+               max_format_errors: int = 3, max_free_turns: int = 3, model: str | None = None, temperature: float = 0.0,
                max_output_tokens: int | None = 1500, empty_retries: int = 1,
                on_step: Callable[[StepLog], None] | None = None) -> DebugRun:
     system = build_system_prompt(tool_specs(ws))
@@ -133,8 +134,11 @@ def debug_loop(ws: DebugWorkspace, evidence: Evidence, client, max_steps: int = 
         if on_step:
             on_step(log)
 
-    for step in range(1, max_steps + 1):
-        prompt = build_prompt(initial, run.turns, max_steps - step + 1)
+    used = 0                                  # 쓴 조사 단계 (도구 호출)
+    step = 0                                  # 턴 번호. evidence가 인용하는 번호라 형식 오류 턴도 번호를 받는다
+    while used < max_steps and step < max_steps + max_free_turns:
+        step += 1
+        prompt = build_prompt(initial, run.turns, max_steps - used)
         retries, retry_reasons = 0, []
         resp = None
         while True:
@@ -196,6 +200,7 @@ def debug_loop(ws: DebugWorkspace, evidence: Evidence, client, max_steps: int = 
             else:
                 seen_calls[key] = step
             tool_steps.add(step)
+            used += 1
             if act.normalized:
                 run.normalized_calls += 1
             record(StepLog(step, "tool", act.tool, act.args,

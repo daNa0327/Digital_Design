@@ -38,7 +38,7 @@ def main(argv: list | None = None) -> int:
     ap.add_argument("--label", default="human", help="결과 폴더/리포트 이름에 쓸 라벨 (기본: human)")
     ap.add_argument("--tb", help="입력 TB (기본: 사람이 쓴 dut/<dut>/tb/tb_<dut>_sc.v)")
     ap.add_argument("--tb-top", help="TB의 top 모듈 이름 (기본: 카탈로그의 top)")
-    ap.add_argument("--max-steps", type=int, default=8)
+    ap.add_argument("--max-steps", type=int, default=10, help="조사 단계 상한 (형식 오류/거부된 보고서는 세지 않음)")
     ap.add_argument("--max-output-tokens", type=int, default=4096,
                     help="응답 한 번의 최대 출력 토큰 (생각 토큰이 여기서 빠지면 본문이 비거나 잘릴 수 있어 넉넉히)")
     ap.add_argument("--empty-retries", type=int, default=1,

@@ -41,7 +41,7 @@ scripts/  run_eval, run_debug_eval, verify_fixes, show_proposals, gen_tb, llm_pi
 dut/      sync_fifo/, spi/, uart/, i2c/ (각 rtl/, tb/, spec.md)
 bugs/     sync_fifo/bugs.json, spi/bugs.json, uart/bugs.json, i2c/bugs.json (변형 카탈로그)
 docs/     NOTES_p0.md ~ NOTES_ps8.md (Phase별 설계·결과 기록)
-tests/    pytest (전체 601개가 기대값)
+tests/    pytest (전체 605개가 기대값)
 runs/     실행 결과(results.json, work/ 등)
 ```
 
@@ -65,7 +65,7 @@ runs/     실행 결과(results.json, work/ 등)
 - 따라서 **TB 품질이 Agent 정확도의 상한**이다. TB 없이 Agent가 TB를 생성하는 모드는 신뢰도가 낮고(버그 있는 RTL에서 기대값을 만들면 버그를 정상으로 기대한다), 리포트에 그렇게 명시해야 한다. 기본 모드는 사람이 쓴 TB. 8-3의 `run_agent`는 이 구분을 지킨다.
 
 ### Debug Agent
-- 한 턴에 JSON 액션 하나. 도구: `read_rtl`, `search_rtl`, `get_log_snippet`, `read_tb`, `list_signals`, `read_vcd_signal`, `sample_signals`, `propose_fix`, `rerun_sim`. `max_steps` 기본 8.
+- 한 턴에 JSON 액션 하나. 도구: `read_rtl`, `search_rtl`, `get_log_snippet`, `read_tb`, `list_signals`, `read_vcd_signal`, `sample_signals`, `propose_fix`, `rerun_sim`. `max_steps` 기본 10 (F1, 2026-11-26: 형식 오류와 거부된 보고서는 단계로 세지 않고 케이스당 `max_free_turns`=3까지 허용. spi0·uart0·i2c0 기준선은 8단계, 형식 오류도 단계로 셈).
 - 결과 카테고리: `exact / near / wrong_line / wrong_file / not_rtl_bug / no_report`.
 - `rerun_sim`: 패치된 RTL 복사본 + 원본 사람 TB로 재시뮬레이션. 최대 3회, 제안별 캐시, **스텝을 소모**한다. `fix_proposal_ids`에는 rerun_sim이 PASS한 제안만 올리라는 프롬프트 규칙(rule 7)이 있다.
 - `check_fix`: 사후 검증. 주석 제거 + 공백 압축 후 골든과 같은지 비교. 느슨한 규칙(주장한 제안 중 하나라도 통과하면 pass).
@@ -141,6 +141,6 @@ sync_fifo에서 튜닝한 Agent를 **그대로** SPI에 돌려야 일반화 성�
 ---
 
 ## 8. 테스트
-- `pytest -q` 전체 601개가 기대값(UART, I2C 추가 후). `tests/test_spi_dut.py` 9개, `tests/test_uart_dut.py` 3개, `tests/test_i2c_dut.py` 3개(Icarus 필요).
+- `pytest -q` 전체 605개가 기대값(F1+F2a 추가 후). `tests/test_spi_dut.py` 9개, `tests/test_uart_dut.py` 3개, `tests/test_i2c_dut.py` 3개(Icarus 필요).
 - Icarus가 없는 환경에서는 일부 테스트가 건너뛰거나 실패할 수 있다. 실패하면 환경 문제인지 코드 문제인지 구분해서 보고한다.
 - `sim` 패키지(`sim/runner.py`)가 없으면 `core/compile_gate.py` import가 실패한다. 프로젝트 루트에서 실행한다.
