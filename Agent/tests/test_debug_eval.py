@@ -75,6 +75,7 @@ def go(env, responses, runner=None, **kw):
     g, tb, bugs, tmp = env
     fake = FakeLLM(responses)
     runner = runner or Runner()
+    kw.setdefault("empty_retries", 1)          # F4b 이전 값 기준으로 쓰인 테스트들
     rep = run_debug_eval(bugs, g, tb, "tb", "dut", runner, LLMClient(fake), tmp / "out", dut="dut", **kw)
     return rep, fake, runner
 

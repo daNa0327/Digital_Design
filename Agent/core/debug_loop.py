@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -34,6 +35,23 @@ from core.debug_protocol import (Evidence, ProtocolError, Turn, build_initial_me
                                  build_system_prompt, parse_action, validate_report)
 from core.debug_tools import DebugWorkspace, dispatch_debug, tool_specs
 from llm.base import BudgetExceeded, DailyQuotaExceeded, LLMError, LLMRequest
+
+FORMAT_ERROR_KEEP = 4000          # F4c: 형식 오류 응답 원문 저장 길이 (500자에서는 원인을 볼 수 없던 사례가 있었다)
+TIMING_EVIDENCE_TOOLS = frozenset({"read_vcd_signal", "sample_signals", "rerun_sim"})
+_TIMING_CLAIM = re.compile(
+    r"\b(?:\d+|one|two|single)\s+(?:spi_clk\s+|clock\s+|ck\s+|cycle\s+)?cycles?\b"
+    r"|\btoo (?:early|late|short|long)\b|\b(?:only|just) (?:for )?(?:one|1|a single)\b"
+    r"|\bimmediately (?:transitions?|goes|returns|moves)\b"
+    r"|\b(?:held|asserted|stays?|lasts?|remains?|kept) (?:high|low|asserted)? ?for\b", re.I)
+
+
+def timing_claim(report: dict[str, Any]) -> str | None:
+    """F3b: 보고서가 "N주기 유지", "너무 일찍/늦게" 같은 타이밍 주장을 하면 그 문구를 돌려준다."""
+    if report.get("verdict") != "rtl_bug":
+        return None
+    m = _TIMING_CLAIM.search(f"{report.get('summary') or ''} {report.get('root_cause') or ''}")
+    return m.group(0) if m else None
+
 
 STATUSES = ("final", "max_steps", "format_errors", "quota", "budget", "llm_error")
 
@@ -69,7 +87,8 @@ class DebugRun:
     proposals: list[dict[str, Any]] = field(default_factory=list)
     initial_message: str = ""        # Agent이 처음 받은 증거 메시지 (사후 분석에서 Agent가 무엇을 알았는지 확인)
     prompt_sha: str = ""             # 시스템 프롬프트(규약 + 도구 명세)의 해시. 어떤 프롬프트로 얻은 결과인지 구분
-    stripped_fix_ids: list[Any] = field(default_factory=list)   # F5: rerun_sim PASS가 아니라 보고서에서 뺀 수정안 id
+    stripped_fix_ids: list[Any] = field(default_factory=list)
+    timing_gate_rejections: int = 0   # F3b: 근거 없는 타이밍 주장으로 거부한 횟수 (0 또는 1)   # F5: rerun_sim PASS가 아니라 보고서에서 뺀 수정안 id
 
     @property
     def n_steps(self) -> int:
@@ -91,7 +110,7 @@ class DebugRun:
             "turns": [{"step": t.step, "assistant": t.assistant, "observation": t.observation} for t in self.turns],
             "proposals": self.proposals,
             "prompt_sha": self.prompt_sha, "initial_message": self.initial_message,
-            "stripped_fix_ids": self.stripped_fix_ids,
+            "stripped_fix_ids": self.stripped_fix_ids, "timing_gate_rejections": self.timing_gate_rejections,
         }
 
 
@@ -139,13 +158,15 @@ def strip_unverified_fixes(report: dict[str, Any], ws: DebugWorkspace) -> tuple[
 
 def debug_loop(ws: DebugWorkspace, evidence: Evidence, client, max_steps: int = 10,
                max_format_errors: int = 3, max_free_turns: int = 3, model: str | None = None, temperature: float = 0.0,
-               max_output_tokens: int | None = 1500, empty_retries: int = 1,
+               max_output_tokens: int | None = 1500, empty_retries: int = 2,
                on_step: Callable[[StepLog], None] | None = None) -> DebugRun:
     system = build_system_prompt(tool_specs(ws))
     initial = build_initial_message(evidence)
     run = DebugRun(status="max_steps", initial_message=initial,
                    prompt_sha=hashlib.sha256(system.encode("utf-8")).hexdigest()[:12])
     tool_steps: set[int] = set()
+    tools_used: set[str] = set()
+    timing_gate_used = False                  # F3b: 타이밍 주장 거부는 케이스당 1회
     seen_calls: dict[str, int] = {}
     consecutive_fmt = 0
     rtl_names = sorted(ws.rtl)
@@ -207,7 +228,7 @@ def debug_loop(ws: DebugWorkspace, evidence: Evidence, client, max_steps: int = 
             extra = f" [finish_reason={fr}]" if fr not in (None, "STOP") else ""
             record(StepLog(step, "format_error", note=str(e) + extra, cached=resp.cached, finish_reason=fr,
                            retries=retries, retry_reasons=retry_reasons),
-                   resp.text.strip()[:500], json.dumps({"error": msg}, ensure_ascii=False))
+                   resp.text.strip()[:FORMAT_ERROR_KEEP], json.dumps({"error": msg}, ensure_ascii=False))
             if consecutive_fmt >= max_format_errors:
                 run.status, run.error = "format_errors", f"형식 오류 {consecutive_fmt}회 연속"
                 break
@@ -223,6 +244,7 @@ def debug_loop(ws: DebugWorkspace, evidence: Evidence, client, max_steps: int = 
             else:
                 seen_calls[key] = step
             tool_steps.add(step)
+            tools_used.add(act.tool)
             used += 1
             if act.normalized:
                 run.normalized_calls += 1
@@ -237,6 +259,14 @@ def debug_loop(ws: DebugWorkspace, evidence: Evidence, client, max_steps: int = 
         problems = validate_report(act.report, rtl_names, valid_steps=tool_steps)
         if not problems:
             problems = semantic_problems(act.report, ws, tool_steps)
+        claim = timing_claim(act.report) if not problems else None
+        if (claim and not timing_gate_used and not (tools_used & TIMING_EVIDENCE_TOOLS)
+                and (ws.vcd is not None or ws.sim is not None)):
+            timing_gate_used = True
+            run.timing_gate_rejections += 1
+            problems = [f'타이밍 주장("{claim}")을 파형이나 재시뮬레이션으로 확인하지 않았다. 그 신호에 값을 넣는 모든 '
+                        "상태를 search_rtl로 찾고, read_vcd_signal/sample_signals 또는 rerun_sim으로 실제 타이밍을 "
+                        "확인한 뒤 보고하라 (확인 결과 주장이 맞으면 같은 결론을 다시 보내도 된다)."]
         if problems:
             run.rejected_reports += 1
             note = "; ".join(problems)

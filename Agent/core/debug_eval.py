@@ -188,6 +188,7 @@ def summarize_cases(cases: list[Case]) -> dict[str, Any]:
         "fix_pass_rate": (fix_cat["fixed_golden"] + fix_cat["fixed_pass"]) / len(fixed) if fixed else None,
         "fix_golden_rate": fix_cat["fixed_golden"] / len(fixed) if fixed else None,
         "stripped_fix_cases": [c.bug_id for c in ev if c.run.get("stripped_fix_ids")],
+        "timing_gate_cases": [c.bug_id for c in ev if c.run.get("timing_gate_rejections")],
         "located_but_not_fixed": [c.bug_id for c in fixed if c.score["category"] in ("exact", "near")
                                   and c.fix["category"] not in ("fixed_golden", "fixed_pass")],
         "n_cases": len(cases), "n_evaluated": n,
@@ -251,7 +252,7 @@ def _load_case(cases_dir: Path, bug_id: str) -> Case | None:
 def run_debug_eval(bugs: list[Bug], golden_rtl_dir: str | Path, tb_path: str | Path, tb_top: str,
                    dut_top: str, runner: Runner, client, work_root: str | Path, dut: str = "dut",
                    spec_text: str | None = None, max_steps: int = 10, near: int = NEAR, resume: bool = False,
-                   max_output_tokens: int | None = 4096, empty_retries: int = 1,
+                   max_output_tokens: int | None = 4096, empty_retries: int = 2,
                    sim_tool: bool = False, verify_fixes: bool = False,
                    vcd_loader: Callable[[str | None], Any] = default_vcd_loader,
                    progress: Callable[[str], None] | None = None) -> DebugEvalReport:

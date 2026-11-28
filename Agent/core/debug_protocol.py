@@ -72,6 +72,36 @@ def _json_objects(text: str) -> list[Any]:
     return out
 
 
+def _recover_objects(text: str) -> list[Any]:
+    """F4a: JSON으로 읽히지 않는 응답 중 의도가 분명한 것을 고쳐 읽는다 (dev 세트 형식 오류 67건 중 약 19건).
+
+    - JSON에 없는 escape `\\'` (4건)        -> `'`
+    - JSON을 문자열로 한 번 더 감싼 `{\\"thought\\"...}` (3건) -> 한 겹 벗긴다
+    - 작은따옴표를 쓴 Python dict `{'thought': ...}` (12건) -> ast.literal_eval (리터럴만 읽으므로 코드 실행 없음)
+    """
+    import ast
+    s = text.strip()
+    candidates = [text.replace("\\'", "'")]
+    if s.startswith('{\\"'):                    # 한 겹 벗기기는 JSON 문자열 디코딩으로 (단순 치환은 \\n 같은 escape를 깨뜨린다)
+        try:
+            candidates.append(json.loads('"' + s + '"'))
+        except json.JSONDecodeError:
+            pass
+    for fixed in candidates:
+        if fixed != text:
+            objs = [o for o in _json_objects(fixed) if isinstance(o, dict) and "action" in o]
+            if objs:
+                return objs
+    if s.startswith("{'"):
+        try:
+            o = ast.literal_eval(s[: s.rfind("}") + 1])
+        except (ValueError, SyntaxError, MemoryError, RecursionError):
+            return []
+        if isinstance(o, dict) and "action" in o:
+            return [o]
+    return []
+
+
 def parse_action(text: str, tool_names: set[str] | frozenset[str] | None = None) -> Action:
     """응답에서 action 하나를 뽑는다.
 
@@ -83,12 +113,23 @@ def parse_action(text: str, tool_names: set[str] | frozenset[str] | None = None)
         raise ProtocolError("응답이 비어 있다. JSON 객체 하나로 답하라.")
     objs = _json_objects(text)
     objs = [o for o in objs if isinstance(o, dict) and "action" in o]
+    recovered = False
+    if not objs:
+        objs, recovered = _recover_objects(text), True
     if not objs:
         raise ProtocolError('유효한 JSON action을 찾지 못했다. {"thought":..., "action":"tool"|"final", ...} 형식의 '
                             "JSON 객체 하나로 답하라.")
+    # F4a: 액션이 여럿이면 첫 액션만 받는다 (같은 객체 반복, 다음 단계까지 지어낸 경우가 dev 세트 6건).
+    # 뒤의 액션은 아직 결과를 보지 않은 계획이므로 버린다. 복구로 표시해 집계에 남긴다.
     if len(objs) > 1:
-        raise ProtocolError("한 번의 응답에 action이 여러 개 있다. 한 번에 하나의 action만 보내라.")
-    o = objs[0]
+        recovered = True
+    act = _action_from(objs[0], tool_names)
+    if recovered and not act.normalized:
+        act = Action(act.kind, act.thought, tool=act.tool, args=act.args, report=act.report, normalized=True)
+    return act
+
+
+def _action_from(o: dict[str, Any], tool_names: set[str] | frozenset[str] | None) -> Action:
     kind = o.get("action")
     thought = o.get("thought", "")
     thought = thought if isinstance(thought, str) else str(thought)
@@ -206,8 +247,16 @@ _SIM_RULE = """
 7. After propose_fix, call rerun_sim with the proposal id to simulate the patched design with the original testbench. If it still FAILs, your root cause is probably wrong or incomplete: compare first_failures with the original failures and reconsider before reporting. List a proposal in fix_proposal_ids only if rerun_sim returned PASS."""
 
 
+# F3a: 클럭 로직 유령 주장("DONE이 1주기뿐") 대응. 확인할 도구가 있을 때만 넣는다.
+_CLOCK_RULE = """
+8. Registered (clocked) outputs keep their value until some branch assigns them again, and a value assigned in one state is still there in the next state. Before claiming that a signal is held too briefly or too long, or changes too early or too late, find EVERY assignment to it across all states (search_rtl), then confirm the timing with {check}."""
+
+
 def build_system_prompt(specs: list[dict[str, Any]]) -> str:
     sim_rule = _SIM_RULE if any(sp.get("name") == "rerun_sim" for sp in specs) else ""
+    have = {sp.get("name") for sp in specs}
+    check = [t for t in ("read_vcd_signal", "sample_signals", "rerun_sim") if t in have]
+    clock_rule = _CLOCK_RULE.format(check=" or ".join(check)) if check else ""
     return f"""You are a Verilog RTL debugging agent. A self-checking testbench FAILED on a design under test (DUT).
 Find the root cause using the tools, then report. You never modify files: you only read evidence and propose fixes.
 
@@ -220,7 +269,7 @@ Find the root cause using the tools, then report. You never modify files: you on
    - unknown: the evidence is insufficient. Say what is missing. Do NOT guess.
 4. Never conclude from a value you have not seen. Signal values that are x or whose status is not ok need cross-checking.
 5. The line you report must be the line that CAUSES the wrong behavior, not the line where the symptom is first visible.
-6. propose_fix only accepts RTL files. If you believe the testbench is wrong, report tb_issue instead of changing it.{sim_rule}
+6. propose_fix only accepts RTL files. If you believe the testbench is wrong, report tb_issue instead of changing it.{sim_rule}{clock_rule}
 
 ## Reply format
 Every reply is exactly ONE JSON object, nothing else of substance outside it.

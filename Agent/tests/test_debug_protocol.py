@@ -68,7 +68,6 @@ def test_JSON_문자열_안의_중괄호는_문제없다():
     ('{"action":"tool"}', "도구 이름"),
     ('{"action":"tool","tool":"t","args":[1]}', "객체"),
     ('{"action":"final","report":"done"}', "객체"),
-    ('{"action":"tool","tool":"a"} {"action":"tool","tool":"b"}', "여러 개"),
 ])
 def test_형식_오류는_설명이_있는_ProtocolError(text, word):
     """형식이 틀리면 LLM에게 되돌려줄 이유 문장이 들어 있는 예외가 난다."""
@@ -261,3 +260,38 @@ def test_초기_증거에_파형이_있으면_실패_줄_다음에_싣는다(ws)
     ev.waveform = "Waveform up to the first failures (...):\n  tb.s  (check s failed at 1000 ps): 0ps=0"
     msg = build_initial_message(ev)
     assert msg.index("First failing checks") < msg.index("Waveform up to")
+
+
+# ---------------------------------------------------------------------------------------------
+# F4a: 의도가 분명한 형식 오류 복구 (dev 세트 실제 사례)
+# ---------------------------------------------------------------------------------------------
+@pytest.mark.parametrize("text", [
+    "{'thought': 'look', 'action': 'tool', 'tool': 'read_rtl', 'args': {'file': 'rtl/a.v'}}",       # Python dict
+    '{"thought": "Let\\\'s look", "action": "tool", "tool": "read_rtl", "args": {"file": "rtl/a.v"}}',  # \' escape
+    '{\\"thought\\": \\"look\\\\nmore\\", \\"action\\": \\"tool\\", \\"tool\\": \\"read_rtl\\", '
+    '\\"args\\": {\\"file\\": \\"rtl/a.v\\"}}',                                                    # 한 겹 더 감싼 JSON
+])
+def test_의도가_분명한_형식_오류는_복구하고_표시한다(text):
+    act = parse_action(text)
+    assert act.kind == "tool" and act.tool == "read_rtl" and act.args == {"file": "rtl/a.v"} and act.normalized
+
+
+def test_액션이_여러_개면_첫_액션만_받는다():
+    """같은 객체 반복이나 다음 단계까지 지어낸 응답: 아직 결과를 보지 않은 뒤의 액션은 버린다."""
+    act = parse_action('{"action":"tool","tool":"a"} {"action":"tool","tool":"b"}')
+    assert act.tool == "a" and act.normalized
+
+
+def test_Python_dict는_리터럴만_읽고_코드는_실행하지_않는다():
+    """ast.literal_eval만 쓰므로 함수 호출 같은 표현식은 복구하지 않고 형식 오류로 남긴다."""
+    with pytest.raises(ProtocolError):
+        parse_action("{'action': 'tool', 'tool': __import__('os').getcwd()}")
+
+
+def test_클럭_규칙은_확인_도구가_있을_때만_있는_도구_이름으로_들어간다():
+    """F3a: 파형/재시뮬 도구가 없으면 규칙 8이 없어 프롬프트가 이전과 같고, 있으면 있는 도구만 언급한다."""
+    from core.debug_tools import tool_specs
+    base = tool_specs(DebugWorkspace({"rtl/a.v": "x\n"}, {}, ""))
+    assert "8. Registered" not in build_system_prompt(base)
+    p = build_system_prompt(base + [{"name": "rerun_sim", "description": "d", "input_schema": {"type": "object"}}])
+    assert "8. Registered" in p and "confirm the timing with rerun_sim." in p and "read_vcd_signal" not in p

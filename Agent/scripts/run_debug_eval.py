@@ -41,7 +41,7 @@ def main(argv: list | None = None) -> int:
     ap.add_argument("--max-steps", type=int, default=10, help="조사 단계 상한 (형식 오류/거부된 보고서는 세지 않음)")
     ap.add_argument("--max-output-tokens", type=int, default=4096,
                     help="응답 한 번의 최대 출력 토큰 (생각 토큰이 여기서 빠지면 본문이 비거나 잘릴 수 있어 넉넉히)")
-    ap.add_argument("--empty-retries", type=int, default=1,
+    ap.add_argument("--empty-retries", type=int, default=2,
                     help="빈 응답을 받으면 같은 요청을 다시 보내는 횟수 (단계/형식 오류로 세지 않음, 기본 1, 0이면 끔)")
     ap.add_argument("--no-sim-tool", action="store_true",
                     help="Agent에게 rerun_sim 도구를 주지 않음 (v0a~v0d와 같은 프롬프트/도구 조건)")

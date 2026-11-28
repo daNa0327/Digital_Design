@@ -38,6 +38,7 @@ def ev(ws):
 
 
 def run(ws, responses, **kw):
+    kw.setdefault("empty_retries", 1)          # 재시도 테스트들은 F4b 이전 값(1회) 기준으로 쓰였다. 기본값 2는 따로 검증
     fake = FakeLLM(responses)
     return debug_loop(ws, ev(ws), LLMClient(fake), **kw), fake
 
@@ -321,7 +322,7 @@ def test_빈_응답이_계속되면_재시도해도_연속_형식_오류_한도�
 def test_재시도도_호출_상한에_포함된다(ws):
     """max_calls=2일 때 첫 호출 + 재시도로 상한을 다 쓰고, 다음 단계에서 budget으로 끝난다 (몰래 호출하지 않는다)."""
     fake = FakeLLM(["", ""])
-    r = debug_loop(ws, ev(ws), LLMClient(fake, max_calls=2))
+    r = debug_loop(ws, ev(ws), LLMClient(fake, max_calls=2), empty_retries=1)
     assert r.status == "budget" and r.empty_retries == 1 and r.llm_calls == 2 and len(fake.calls) == 2
     assert r.steps[0].kind == "format_error"
 
@@ -390,3 +391,43 @@ def test_세지_않는_턴은_max_free_turns로_상한이_있다(ws):
     """거부만 반복하면 max_steps + max_free_turns 턴에서 끝난다 (호출량 상한 유지)."""
     r, fake = run(ws, [final()] * 10, max_steps=2, max_free_turns=2)
     assert r.status == "max_steps" and r.report is None and len(fake.calls) == 4 and r.rejected_reports == 4
+
+
+# ---------------------------------------------------------------------------------------------
+# F4b: 빈 응답 재시도 기본 2회 / F3b: 근거 없는 타이밍 주장은 1회 거부
+# ---------------------------------------------------------------------------------------------
+def test_빈_응답_재시도는_기본_2회다(ws):
+    fake = FakeLLM([EMPTY, EMPTY, tool("read_rtl", file="rtl/a.v"), final()])
+    r = debug_loop(ws, ev(ws), LLMClient(fake))
+    assert r.status == "final" and r.format_errors == 0 and r.empty_retries == 2 and r.steps[0].retries == 2
+
+
+def _sim_ws():
+    w = DebugWorkspace({"rtl/a.v": RTL}, {"tb/t.v": "x\n"}, LOG)
+    w.sim = lambda rtl: {"status": "PASS", "tb_verdict": "PASS", "n_check_fails": 0, "checks_total": 1,
+                         "mismatches": 0, "first_failures": []}
+    return w
+
+
+TIMING = "DONE goes back to IDLE so done is asserted for only one cycle instead of two."
+
+
+def test_근거_없는_타이밍_주장은_한_번_거부되고_같은_결론은_다시_받는다():
+    """F3b: 확인 도구를 안 쓰고 타이밍을 주장하면 1회 거부(안내 포함). 같은 보고서를 다시 보내면 받아들인다."""
+    w = _sim_ws()
+    r, fake = run(w, [tool("read_rtl", file="rtl/a.v"), final(root_cause=TIMING), final(root_cause=TIMING)])
+    assert r.status == "final" and r.rejected_reports == 1 and r.timing_gate_rejections == 1
+    assert "타이밍 주장" in fake.calls[2].prompt and "only one cycle" in fake.calls[2].prompt
+
+
+def test_파형이나_재시뮬로_확인했으면_타이밍_주장을_막지_않는다():
+    w = _sim_ws()
+    r, _ = run(w, [tool("propose_fix", file="rtl/a.v", find="line3", replace="line3x"), tool("rerun_sim", proposal_id=1),
+                   final(root_cause=TIMING)])
+    assert r.status == "final" and r.rejected_reports == 0 and r.timing_gate_rejections == 0
+
+
+def test_확인_수단이_없는_모드에서는_타이밍_게이트를_걸지_않는다(ws):
+    """VCD도 rerun_sim도 없으면 확인할 방법이 없으니 거부하지 않는다 (이전 측정 조건 유지)."""
+    r, _ = run(ws, [tool("read_rtl", file="rtl/a.v"), final(root_cause=TIMING)])
+    assert r.status == "final" and r.rejected_reports == 0
